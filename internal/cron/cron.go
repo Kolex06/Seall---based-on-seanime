@@ -1,0 +1,86 @@
+package cron
+
+import (
+	"seall/internal/core"
+	"time"
+)
+
+type JobCtx struct {
+	App *core.App
+}
+
+func RunJobs(app *core.App) {
+
+	// Run the jobs only if the server is online
+	ctx := &JobCtx{
+		App: app,
+	}
+
+	refreshMediaTicker := time.NewTicker(10 * time.Minute)
+	refreshMediaSimulatedTicker := time.NewTicker(30 * time.Minute)
+	refreshLocalDataTicker := time.NewTicker(30 * time.Minute)
+	refetchReleaseTicker := time.NewTicker(1 * time.Hour)
+	refetchAnnouncementsTicker := time.NewTicker(10 * time.Minute)
+
+	go func() {
+		for {
+			select {
+			case <-refreshMediaTicker.C:
+				if app.IsOffline() || app.GetUser().IsSimulated {
+					continue
+				}
+				RefreshMediaDataJob(ctx)
+				app.SyncMediaToSimulatedCollection()
+			}
+		}
+	}()
+
+	go func() {
+		for {
+			select {
+			case <-refreshMediaSimulatedTicker.C:
+				if app.IsOffline() || !app.GetUser().IsSimulated {
+					continue
+				}
+				RefreshMediaDataJob(ctx)
+			}
+		}
+	}()
+
+	go func() {
+		for {
+			select {
+			case <-refreshLocalDataTicker.C:
+				if app.IsOffline() {
+					continue
+				}
+				SyncLocalDataJob(ctx)
+			}
+		}
+	}()
+
+	go func() {
+		for {
+			select {
+			case <-refetchReleaseTicker.C:
+				if app.IsOffline() {
+					continue
+				}
+				app.Updater.ShouldRefetchReleases()
+			}
+		}
+	}()
+
+	go func() {
+		for {
+			select {
+			case <-refetchAnnouncementsTicker.C:
+				if app.IsOffline() {
+					continue
+				}
+				app.Updater.FetchAnnouncements()
+			}
+		}
+	}()
+
+}

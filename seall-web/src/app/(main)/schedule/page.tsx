@@ -1,0 +1,41 @@
+import { useGetMissingEpisodes } from "@/api/hooks/media_entries.hooks"
+import { CustomLibraryBanner } from "@/app/(main)/_features/anime-library/_containers/custom-library-banner"
+import { PluginWebviewSlot } from "@/app/(main)/_features/plugin/webview/plugin-webviews"
+import { MissingEpisodes } from "@/app/(main)/schedule/_components/missing-episodes"
+import { UpcomingEpisodes } from "@/app/(main)/schedule/_containers/upcoming-episodes.tsx"
+import { PageWrapper } from "@/components/shared/page-wrapper"
+import { AppLayoutStack } from "@/components/ui/app-layout"
+import { LoadingSpinner } from "@/components/ui/loading-spinner"
+import React from "react"
+import { ScheduleCalendar } from "./_components/schedule-calendar"
+
+
+export default function Page() {
+
+    const { data, isLoading } = useGetMissingEpisodes()
+
+    if (isLoading) return <LoadingSpinner />
+
+    return (
+        <>
+            <CustomLibraryBanner discrete />
+            <PageWrapper
+                className="p-4 sm:p-8 space-y-10 pb-10"
+            >
+                <PluginWebviewSlot slot="schedule-screen-top" />
+                <MissingEpisodes data={data} isLoading={isLoading} />
+                <AppLayoutStack>
+
+                    <div className="hidden lg:block space-y-2">
+                        <h2>Release schedule</h2>
+                        <p className="text-[--muted]">Your SIMKL list, with an optional full calendar view</p>
+                    </div>
+
+                    <ScheduleCalendar />
+                </AppLayoutStack>
+                <UpcomingEpisodes />
+                <PluginWebviewSlot slot="schedule-screen-bottom" />
+            </PageWrapper>
+        </>
+    )
+}

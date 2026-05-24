@@ -1,0 +1,281 @@
+package mediaapi
+
+import (
+	"bytes"
+	"context"
+	"io"
+	"net/http"
+	"seall/internal/util"
+	"testing"
+	"time"
+
+	"github.com/davecgh/go-spew/spew"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+type roundTripFunc func(req *http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
+
+type testClock struct {
+	now time.Time
+}
+
+func (c *testClock) Now() time.Time {
+	return c.now
+}
+
+func (c *testClock) Advance(delay time.Duration) {
+	c.now = c.now.Add(delay)
+}
+
+func newSIMKLTestResponse(statusCode int, body string, headers map[string]string) *http.Response {
+	respHeaders := make(http.Header)
+	for key, value := range headers {
+		respHeaders.Set(key, value)
+	}
+
+	return &http.Response{
+		StatusCode: statusCode,
+		Header:     respHeaders,
+		Body:       io.NopCloser(bytes.NewBufferString(body)),
+	}
+}
+
+func TestGetAnimeById(t *testing.T) {
+	simklClient := NewTestMediaApiClient()
+
+	tests := []struct {
+		name    string
+		mediaId int
+	}{
+		{
+			name:    "Re:Zero",
+			mediaId: 21355,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			res, err := simklClient.BaseAnimeByID(context.Background(), &tt.mediaId)
+			assert.NoError(t, err)
+			assert.NotNil(t, res)
+		})
+	}
+}
+
+func TestGetAnimeByIdLive(t *testing.T) {
+	simklClient := newLiveMediaApiClient(t)
+	mediaID := 1
+
+	res, err := simklClient.BaseAnimeByID(context.Background(), &mediaID)
+	assert.NoError(t, err)
+	assert.NotNil(t, res)
+}
+
+func TestListAnime(t *testing.T) {
+	tests := []struct {
+		name                string
+		Page                *int
+		Search              *string
+		PerPage             *int
+		Sort                []*MediaSort
+		Status              []*MediaStatus
+		Genres              []*string
+		Tags                []*string
+		AverageScoreGreater *int
+		Season              *MediaSeason
+		SeasonYear          *int
+		Format              *MediaFormat
+		IsAdult             *bool
+		CountryOfOrigin     *string
+	}{
+		{
+			name:                "Popular",
+			Page:                new(1),
+			Search:              nil,
+			PerPage:             new(20),
+			Sort:                []*MediaSort{new(MediaSortTrendingDesc)},
+			Status:              nil,
+			Genres:              nil,
+			Tags:                nil,
+			AverageScoreGreater: nil,
+			Season:              nil,
+			SeasonYear:          nil,
+			Format:              nil,
+			IsAdult:             nil,
+			CountryOfOrigin:     nil,
+		},
+	}
+
+	simklClient := NewTestMediaApiClient()
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+
+			cacheKey := ListAnimeCacheKey(
+				tt.Page,
+				tt.Search,
+				tt.PerPage,
+				tt.Sort,
+				tt.Status,
+				tt.Genres,
+				tt.Tags,
+				tt.AverageScoreGreater,
+				tt.Season,
+				tt.SeasonYear,
+				tt.Format,
+				tt.IsAdult,
+				tt.CountryOfOrigin,
+			)
+
+			t.Log(cacheKey)
+
+			res, err := ListAnimeM(
+				simklClient,
+				tt.Page,
+				tt.Search,
+				tt.PerPage,
+				tt.Sort,
+				tt.Status,
+				tt.Genres,
+				tt.Tags,
+				tt.AverageScoreGreater,
+				tt.Season,
+				tt.SeasonYear,
+				tt.Format,
+				tt.IsAdult,
+				tt.CountryOfOrigin,
+				util.NewLogger(),
+				"",
+			)
+			assert.NoError(t, err)
+
+			assert.Equal(t, *tt.PerPage, len(res.GetPage().GetMedia()))
+
+			spew.Dump(res)
+		})
+	}
+}
+
+func TestDoSIMKLRequestWithRetriesWaitsBetweenRateLimitedAttempts(t *testing.T) {
+	clock := &testClock{now: time.Date(2026, time.April, 7, 12, 0, 0, 0, time.UTC)}
+	rateBlocker := newSIMKLRateBlocker()
+	rateBlocker.now = clock.Now
+	requestBody := `{"query":"test"}`
+	requestBodies := make([]string, 0, 2)
+	sleepDurations := make([]time.Duration, 0, 1)
+	rateLimitWarnings := make([]int, 0, 1)
+	attempt := 0
+
+	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		attempt++
+
+		body, err := io.ReadAll(req.Body)
+		require.NoError(t, err)
+		requestBodies = append(requestBodies, string(body))
+
+		if attempt == 1 {
+			return newSIMKLTestResponse(http.StatusTooManyRequests, `{"errors":[{"message":"rate limited"}]}`, map[string]string{
+				"Date":        clock.Now().Format(http.TimeFormat),
+				"Retry-After": "0",
+			}), nil
+		}
+
+		return newSIMKLTestResponse(http.StatusOK, `{"data":{"ok":true}}`, map[string]string{
+			"X-Ratelimit-Remaining": "9",
+		}), nil
+	})}
+
+	req, err := http.NewRequest(http.MethodPost, "https://simkl.test/graphql", bytes.NewBufferString(requestBody))
+	require.NoError(t, err)
+
+	resp, rlRemainingStr, err := doSIMKLRequestWithRetries(
+		client,
+		req,
+		rateBlocker,
+		func(ctx context.Context, delay time.Duration) error {
+			sleepDurations = append(sleepDurations, delay)
+			clock.Advance(delay)
+			return nil
+		},
+		func(waitSeconds int) {
+			rateLimitWarnings = append(rateLimitWarnings, waitSeconds)
+		},
+	)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	defer resp.Body.Close()
+
+	assert.Equal(t, 2, attempt)
+	assert.Equal(t, []time.Duration{time.Second}, sleepDurations)
+	assert.Equal(t, []int{1}, rateLimitWarnings)
+	assert.Equal(t, []string{requestBody, requestBody}, requestBodies)
+	assert.Equal(t, "9", rlRemainingStr)
+}
+
+func TestDoSIMKLRequestWithRetriesDoesNotRetryWhenRateLimitHeadersAreMissing(t *testing.T) {
+	// without explicit rate-limit headers, the response should be returned as-is.
+	sleepDurations := make([]time.Duration, 0, 1)
+	attempt := 0
+
+	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		attempt++
+		return newSIMKLTestResponse(http.StatusOK, `{"data":{"ok":true}}`, nil), nil
+	})}
+
+	req, err := http.NewRequest(http.MethodPost, "https://simkl.test/graphql", bytes.NewBufferString(`{"query":"test"}`))
+	require.NoError(t, err)
+
+	resp, rlRemainingStr, err := doSIMKLRequestWithRetries(
+		client,
+		req,
+		nil,
+		func(ctx context.Context, delay time.Duration) error {
+			sleepDurations = append(sleepDurations, delay)
+			return nil
+		},
+		nil,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	defer resp.Body.Close()
+
+	assert.Equal(t, 1, attempt)
+	assert.Empty(t, sleepDurations)
+	assert.Equal(t, "", rlRemainingStr)
+}
+
+func TestSIMKLRateBlockerWaitsUntilBlockExpires(t *testing.T) {
+	// once blocked, later requests should wait until the shared block expires.
+	clock := &testClock{now: time.Date(2026, time.April, 7, 12, 0, 10, 0, time.UTC)}
+	rateBlocker := newSIMKLRateBlocker()
+	rateBlocker.now = clock.Now
+	require.True(t, rateBlocker.BlockUntil(clock.Now().Add(18*time.Second)))
+
+	sleepDurations := make([]time.Duration, 0, 1)
+	err := rateBlocker.Wait(context.Background(), func(ctx context.Context, delay time.Duration) error {
+		sleepDurations = append(sleepDurations, delay)
+		clock.Advance(delay)
+		return nil
+	})
+	require.NoError(t, err)
+
+	assert.Equal(t, []time.Duration{18 * time.Second}, sleepDurations)
+}
+
+func TestSIMKLRateBlockerIgnoresDuplicateOrShorterBlocks(t *testing.T) {
+	// concurrent 429s with the same reset should not re-announce the same block repeatedly.
+	clock := &testClock{now: time.Date(2026, time.April, 7, 12, 0, 20, 0, time.UTC)}
+	rateBlocker := newSIMKLRateBlocker()
+	rateBlocker.now = clock.Now
+	blockedUntil := clock.Now().Add(18 * time.Second)
+
+	assert.True(t, rateBlocker.BlockUntil(blockedUntil))
+	assert.False(t, rateBlocker.BlockUntil(blockedUntil))
+	assert.False(t, rateBlocker.BlockUntil(clock.Now().Add(5*time.Second)))
+	assert.True(t, rateBlocker.BlockUntil(clock.Now().Add(25*time.Second)))
+}

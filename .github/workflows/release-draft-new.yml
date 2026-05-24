@@ -1,0 +1,430 @@
+name: Release Draft
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+
+  build-webapp: # TODO Uncomment if building web
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Web
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # outputs in "seall-web/out/" and "seall-web/out-denshi/"
+      - name: Install dependencies and build web app
+        run: |
+          cd seall-web/
+          npm install
+          npm run build
+          npm run build:denshi
+          cd ..
+      # Upload the output to be used in the next job
+      - name: Upload web folder
+        uses: actions/upload-artifact@v4
+        with:
+          name: web
+          path: seall-web/out # output dir of build
+      - name: Upload web folder (Electron)
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-denshi
+          path: seall-web/out-denshi # output dir of build:denshi
+
+  build-server:
+    needs: build-webapp # TODO Uncomment if building web
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      matrix:
+        # 6 binaries: 2 for Windows, 2 for Linux, 2 for macOS
+        include:
+          # This is the systray version of the Windows binary used for the server build
+          - os: macos-latest # seall-server-systray-windows.exe
+            id: seall-server-systray-windows
+            go_flags: -trimpath -buildmode=exe -ldflags="-s -w -H=windowsgui -extldflags '-static'"
+
+          # This is the non-systray version of the Windows binary used for the Electron Windows build
+          - os: windows-latest # seall-server-windows.exe
+            id: seall-server-windows
+            go_flags: -trimpath -ldflags="-s -w" -tags=nosystray
+
+          # These are the Linux binaries used for the server build and the Electron Linux build
+          - os: ubuntu-latest # seall-server-linux-arm64, seall-server-linux-amd64
+            id: seall-server-linux
+            go_flags: -trimpath -ldflags="-s -w"
+
+          # These are the macOS binaries used for the server build and the Electron macOS build
+          - os: macos-latest # seall-server-darwin-arm64, seall-server-darwin-amd64
+            id: seall-server-darwin
+            go_env: CGO_ENABLED=0
+            go_flags: -trimpath -ldflags="-s -w"
+    steps:
+      - name: Checkout code ⬇️
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Fetch all history
+          fetch-tags: true # Fetch all tags
+          set-safe-directory: true # Add repo path as safe.directory
+
+      - name: Fetch all tags # Fetch all tags (again? can't hurt)
+        run: git fetch --force --tags
+
+      # Go
+      - name: Set up Go ⬇️
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.2'
+
+      #      # Cache Go modules
+      #      - name: Cache Go modules 💾
+      #        uses: actions/cache@v4
+      #        with:
+      #          path: |
+      #            ~/go/pkg/mod
+      #            ~/.cache/go-build
+      #          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+      #          restore-keys: |
+      #            ${{ runner.os }}-go-
+
+      # Download the web folders
+      # TODO Uncomment if building web
+      - name: Download web folder artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: web
+          path: web
+
+      # Create the binary destination folder
+      # ./binaries
+      # |--- ...
+      - name: Create binary destination folder (UNIX) 🗃️
+        if: matrix.os == 'macos-latest' || matrix.os == 'ubuntu-latest'
+        run: mkdir -p binaries
+      - name: Create binary destination folder (Windows) 🗃️
+        if: matrix.os == 'windows-latest'
+        run: mkdir -p binaries
+        shell: bash
+
+
+      #---
+
+      # ONLY for Windows systray build (seall-server-systray-windows)
+      # For the Windows systray build (built on macOS runner), we need to install the necessary dependencies
+      - name: Install C dependencies ⬇️ # macos windows systray build
+        if: matrix.id == 'seall-server-systray-windows'
+        run: |
+          brew install filosottile/musl-cross/musl-cross
+          brew install llvm
+          brew install mingw-w64
+
+      # Build the Windows systray binary
+      # ./binaries/seall-server-systray-windows.exe
+      - name: Build Windows Systray 📦️
+        if: matrix.id == 'seall-server-systray-windows'
+        env:
+          GOARCH: amd64
+          GOOS: windows
+          CGO_ENABLED: 1
+          CC: x86_64-w64-mingw32-gcc
+          CXX: x86_64-w64-mingw32-g++
+        run: |
+          go build -o seall-server-systray-windows.exe ${{ matrix.go_flags }} .
+
+      # Build the Windows non-systray binary
+      # ./seall-server-windows.exe
+      - name: Build Windows Non-Systray 📦️
+        if: matrix.id == 'seall-server-windows'
+        env:
+          GOARCH: amd64
+          GOOS: windows
+          CGO_ENABLED: 0
+        run: |
+          go build -o seall-server-windows.exe ${{ matrix.go_flags }} .
+        shell: bash
+
+      # Build the Linux binaries
+      # ./seall-server-linux-amd64
+      # ./seall-server-linux-arm64
+      - name: Build Linux 📦️
+        if: matrix.id == 'seall-server-linux'
+        run: |
+          CGO_ENABLED=0 GOARCH=amd64 go build -o seall-server-linux-amd64 ${{ matrix.go_flags }} .
+          CGO_ENABLED=0 GOARCH=arm64 go build -o seall-server-linux-arm64 ${{ matrix.go_flags }} .
+
+      # Build the macOS binaries
+      # ./seall-server-darwin-amd64
+      # ./seall-server-darwin-arm64
+      - name: Build macOS 📦️
+        if: matrix.id == 'seall-server-darwin'
+        run: |
+          CGO_ENABLED=0 GOARCH=amd64 go build -o seall-server-darwin-amd64 ${{ matrix.go_flags }} .
+          CGO_ENABLED=0 GOARCH=arm64 go build -o seall-server-darwin-arm64 ${{ matrix.go_flags }} .
+
+      # Tar the binaries
+      - name: Tar the binaries (UNIX) 🗃️
+        if: matrix.os == 'macos-latest' || matrix.os == 'ubuntu-latest'
+        # binaries-seall-server-darwin.tar
+        # binaries-seall-server-linux.tar
+        # binaries-seall-server-systray-windows.tar
+        run: |
+          tar -cf binaries-${{ matrix.id }}.tar seall-server-*
+
+      # Zip the binaries
+      - name: Zip the binaries (Windows) 🗃️
+        if: matrix.os == 'windows-latest'
+        # binaries-seall-server-windows.zip
+        run: |
+          7z a "binaries-${{ matrix.id }}.zip" seall-server-*
+
+      # Upload the binaries to be used in the next job
+      - name: Upload binary folder (UNIX) 📤
+        uses: actions/upload-artifact@v4
+        if: matrix.os == 'macos-latest' || matrix.os == 'ubuntu-latest'
+        with:
+          # go-seall-server-linux
+          # go-seall-server-darwin
+          # go-seall-server-systray-windows
+          name: go-${{ matrix.id }}
+          path: binaries-${{ matrix.id }}.tar
+
+      - name: Upload binary folder (Windows) 📤
+        uses: actions/upload-artifact@v4
+        if: matrix.os == 'windows-latest'
+        with:
+          # go-seall-server-windows
+          name: go-${{ matrix.id }}
+          path: binaries-${{ matrix.id }}.zip
+
+  build-electron:
+    needs: build-server
+    uses: ./.github/workflows/electron-build.yml
+  #    secrets:
+  #      SUBMODULE_PAT: ${{ secrets.SUBMODULE_PAT }}
+
+  release:
+    runs-on: ubuntu-latest
+    needs: [ build-server, build-electron ]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download electron artifacts 📥
+        uses: actions/download-artifact@v4
+        with:
+          pattern: electron-*
+          path: ./artifacts
+          # ./artifacts
+          merge-multiple: true
+
+      - name: Determine version from tag name 🔎
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+          VERSION=${GITHUB_REF/refs\/tags\/v/}
+          echo "Version extracted from tag: $VERSION"
+          elif [[ "$GITHUB_REF" == refs/tags/* ]]; then
+          VERSION=${GITHUB_REF/refs\/tags\//}
+          echo "Version extracted from tag: $VERSION"
+          else
+          echo "Warning: No tag associated with this run. Defaulting to version 0.1.0."
+          VERSION="0.1.0"
+          fi
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+
+      - name: Print version
+        run: echo "Version is ${{ env.VERSION }}"
+
+      - name: Download server binaries 📥
+        uses: actions/download-artifact@v4
+        with:
+          pattern: go-*
+          path: ./artifacts
+          # ./artifacts
+          # |- binaries-seall-server-darwin.tar (contains 2)
+          # |- binaries-seall-server-linux.tar (contains 2)
+          # |- binaries-seall-server-systray-windows.tar (contains 1)
+          merge-multiple: true
+
+      - name: Print all artifacts
+        run: ls -la ./artifacts
+
+      - name: Extract - Rename - Archive server binaries 📂
+        # ./artifacts
+        # |- ...
+        #        \/ /binaries-seall-server-darwin.tar
+        # |- seall-server-darwin-amd64 -> ../seall -> ../seall-${{ env.VERSION }}_MacOS_arm64.tar.gz
+        # |- seall-server-darwin-arm64 -> ../seall -> ../seall-${{ env.VERSION }}_MacOS_x86_64.tar.gz
+        #        \/ /binaries-seall-server-darwin.tar
+        # |- seall-server-linux-amd64 -> ../seall -> ../seall-${{ env.VERSION }}_Linux_x86_64.tar.gz
+        # |- seall-server-linux-arm64 -> ../seall -> ../seall-${{ env.VERSION }}_Linux_arm64.tar.gz
+        #        \/ /binaries-seall-server-systray-windows.tar
+        # |- seall-server-systray-windows.exe -> ../seall.exe -> ../seall-${{ env.VERSION }}_Windows_x86_64.zip
+        run: |
+          if [ -f ./artifacts/binaries-seall-server-darwin.tar ]; then
+            # Extract binaries
+            tar -xf ./artifacts/binaries-seall-server-darwin.tar -C ./artifacts
+
+            # Rename & compress binaries
+            mv ./artifacts/seall-server-darwin-amd64 ./seall
+            tar czf ./seall-${{ env.VERSION }}_MacOS_x86_64.tar.gz ./seall
+            rm -rf ./seall
+
+
+            mv ./artifacts/seall-server-darwin-arm64 ./seall
+            tar czf ./seall-${{ env.VERSION }}_MacOS_arm64.tar.gz ./seall
+            rm -rf ./seall
+          fi
+
+          if [ -f ./artifacts/binaries-seall-server-linux.tar ]; then
+            # Extract binaries
+            tar -xf ./artifacts/binaries-seall-server-linux.tar -C ./artifacts
+
+            # Rename & compress binaries
+            mv ./artifacts/seall-server-linux-amd64 ./seall
+            tar czf ./seall-${{ env.VERSION }}_Linux_x86_64.tar.gz ./seall
+            rm -rf ./seall
+
+
+            mv ./artifacts/seall-server-linux-arm64 ./seall
+            tar czf ./seall-${{ env.VERSION }}_Linux_arm64.tar.gz ./seall
+            rm -rf ./seall
+          fi
+
+          if [ -f ./artifacts/binaries-seall-server-systray-windows.tar ]; then
+            # Extract binaries
+            tar -xf ./artifacts/binaries-seall-server-systray-windows.tar -C ./artifacts
+
+            # Rename & compress binaries
+            mv ./artifacts/seall-server-systray-windows.exe ./seall.exe
+            7z a ./seall-${{ env.VERSION }}_Windows_x86_64.zip ./seall.exe
+            rm -rf ./seall.exe
+          fi
+        shell: bash
+
+      - name: Print all artifacts
+        run: ls -la ./artifacts
+
+      - name: Move & Rename Electron assets 📝🗃️
+        # Move Electron assets to the root directory and rename them
+        run: |
+          if [ -f ./artifacts/seall-denshi-${{ env.VERSION }}_MacOS_arm64.zip ]; then
+              mv ./artifacts/seall-denshi-${{ env.VERSION }}_MacOS_arm64.zip ./seall-denshi-${{ env.VERSION }}_MacOS_arm64.zip
+          fi
+          if [ -f ./artifacts/seall-denshi-${{ env.VERSION }}_MacOS_arm64.zip.blockmap ]; then
+              mv ./artifacts/seall-denshi-${{ env.VERSION }}_MacOS_arm64.zip.blockmap ./seall-denshi-${{ env.VERSION }}_MacOS_arm64.zip.blockmap
+          fi
+          if [ -f ./artifacts/seall-denshi-${{ env.VERSION }}_MacOS_arm64.dmg ]; then
+              mv ./artifacts/seall-denshi-${{ env.VERSION }}_MacOS_arm64.dmg ./seall-denshi-${{ env.VERSION }}_MacOS_arm64.dmg
+          fi
+          if [ -f ./artifacts/seall-denshi-${{ env.VERSION }}_MacOS_arm64.dmg.blockmap ]; then
+              mv ./artifacts/seall-denshi-${{ env.VERSION }}_MacOS_arm64.dmg.blockmap ./seall-denshi-${{ env.VERSION }}_MacOS_arm64.dmg.blockmap
+          fi
+          if [ -f ./artifacts/seall-denshi-${{ env.VERSION }}_MacOS_x64.dmg ]; then
+              mv ./artifacts/seall-denshi-${{ env.VERSION }}_MacOS_x64.dmg ./seall-denshi-${{ env.VERSION }}_MacOS_x64.dmg
+          fi
+          if [ -f ./artifacts/seall-denshi-${{ env.VERSION }}_MacOS_x64.zip ]; then
+              mv ./artifacts/seall-denshi-${{ env.VERSION }}_MacOS_x64.zip ./seall-denshi-${{ env.VERSION }}_MacOS_x64.zip
+          fi
+          if [ -f ./artifacts/seall-denshi-${{ env.VERSION }}_MacOS_x64.dmg.blockmap ]; then
+              mv ./artifacts/seall-denshi-${{ env.VERSION }}_MacOS_x64.dmg.blockmap ./seall-denshi-${{ env.VERSION }}_MacOS_x64.dmg.blockmap
+          fi
+          if [ -f ./artifacts/seall-denshi-${{ env.VERSION }}_Linux_x86_64.AppImage ]; then
+              mv ./artifacts/seall-denshi-${{ env.VERSION }}_Linux_x86_64.AppImage ./seall-denshi-${{ env.VERSION }}_Linux_x86_64.AppImage
+          fi
+          if [ -f ./artifacts/seall-denshi-${{ env.VERSION }}_Windows_x64.exe ]; then
+              mv ./artifacts/seall-denshi-${{ env.VERSION }}_Windows_x64.exe ./seall-denshi-${{ env.VERSION }}_Windows_x64.exe
+          fi
+          if [ -f ./artifacts/seall-denshi-${{ env.VERSION }}_Windows_x64.exe.blockmap ]; then
+              mv ./artifacts/seall-denshi-${{ env.VERSION }}_Windows_x64.exe.blockmap ./seall-denshi-${{ env.VERSION }}_Windows_x64.exe.blockmap
+          fi
+
+          # Copy electron-builder YML files if they exist
+          find ./artifacts -name "*.yml" -exec cp {} ./ \;
+
+      - name: Print all
+        run: ls -la .
+
+      # Go
+      - name: Set up Go ⬇️
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.2'
+
+      # Build the Go script
+      - name: Build Go scripts 🛠️
+        run: |
+          go build -o generate_updater_latest ./.github/scripts/generate_updater_latest.go
+          go build -o generate_release_notes ./.github/scripts/generate_release_notes.go
+
+      # Run the Go scripts
+      - name: Generate latest.json 📦️
+        env:
+          APP_VERSION: ${{ env.VERSION }}
+        run: ./generate_updater_latest
+      - name: Generate release notes 📦️
+        env:
+          APP_VERSION: ${{ env.VERSION }}
+        run: ./generate_release_notes
+
+      - name: Read release notes 🔍
+        id: read_release_notes
+        run: |
+          BODY=$(cat whats-new.md)
+          echo "RELEASE_BODY<<EOF" >> $GITHUB_ENV
+          echo "$BODY" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
+      - name: Create release draft 🚀🚀🚀
+        id: create_release
+        uses: softprops/action-gh-release@v2
+        with:
+          fail_on_unmatched_files: false
+          files: |
+            latest.yml
+            latest-linux.yml
+            latest-mac.yml
+            latest-mac-arm64.yml
+            # Electron Desktop builds
+            seall-denshi-${{ env.VERSION }}_MacOS_arm64.zip
+            seall-denshi-${{ env.VERSION }}_MacOS_arm64.zip.blockmap
+            seall-denshi-${{ env.VERSION }}_MacOS_arm64.dmg
+            seall-denshi-${{ env.VERSION }}_MacOS_arm64.dmg.blockmap
+            seall-denshi-${{ env.VERSION }}_Linux_x86_64.AppImage
+            seall-denshi-${{ env.VERSION }}_Windows_x64.exe
+            seall-denshi-${{ env.VERSION }}_Windows_x64.exe.blockmap
+            # Server builds
+            seall-${{ env.VERSION }}_MacOS_x86_64.tar.gz
+            seall-${{ env.VERSION }}_MacOS_arm64.tar.gz
+            seall-${{ env.VERSION }}_Linux_x86_64.tar.gz
+            seall-${{ env.VERSION }}_Linux_arm64.tar.gz
+            seall-${{ env.VERSION }}_Windows_x86_64.zip
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag_name: v${{ env.VERSION }}
+          release_name: v${{ env.VERSION }}
+          draft: true
+          prerelease: false
+          body: |
+            ## What's new?
+
+            ${{ env.RELEASE_BODY }}
+
+            ---
+            [Open an issue](https://github.com/Kolex06/Seall---based-on-seanime/issues/new/choose)
