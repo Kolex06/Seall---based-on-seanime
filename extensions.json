@@ -1,6 +1,6 @@
 {
   "urls": [
-    "https://github.com/Viren070/AIOStreams/releases/download/seanime-extensions-latest/aiostreams-plugin-manifest.json",
-    "https://github.com/Viren070/AIOStreams/releases/download/seanime-extensions-latest/stremio-custom-source-manifest.json"
+    "https://raw.githubusercontent.com/Kolex06/Seall---based-on-seanime/main/marketplace/aiostreams-plugin-manifest.json",
+    "https://raw.githubusercontent.com/Kolex06/Seall---based-on-seanime/main/marketplace/stremio-custom-source-manifest.json"
   ]
 }
