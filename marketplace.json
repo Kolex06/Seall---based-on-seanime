@@ -22,5 +22,17 @@
     "language": "javascript",
     "lang": "multi",
     "website": "https://docs.aiostreams.viren070.me"
+  },
+  {
+    "id": "custom-css-manager",
+    "name": "Custom CSS Manager",
+    "description": "Manage Seall custom CSS presets and community styles. Built into Seall by default.",
+    "author": "nnotwen",
+    "manifestURI": "https://raw.githubusercontent.com/nnotwen/n-seanime-extensions/master/plugins/Custom%20CSS%20Manager/custom-css-manager.json",
+    "icon": "https://raw.githubusercontent.com/nnotwen/n-seanime-extensions/master/plugins/Custom%20CSS%20Manager/icon.png",
+    "type": "plugin",
+    "language": "typescript",
+    "lang": "en",
+    "website": "https://github.com/nnotwen/n-seanime-extensions"
   }
 ]

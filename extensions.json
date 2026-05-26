@@ -1,6 +1,7 @@
 {
   "urls": [
     "https://github.com/Viren070/AIOStreams/releases/download/seanime-extensions-latest/aiostreams-plugin-manifest.json",
-    "https://github.com/Viren070/AIOStreams/releases/download/seanime-extensions-latest/stremio-custom-source-manifest.json"
+    "https://github.com/Viren070/AIOStreams/releases/download/seanime-extensions-latest/stremio-custom-source-manifest.json",
+    "https://raw.githubusercontent.com/nnotwen/n-seanime-extensions/master/plugins/Custom%20CSS%20Manager/custom-css-manager.json"
   ]
 }
