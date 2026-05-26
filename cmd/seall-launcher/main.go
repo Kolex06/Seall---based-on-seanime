@@ -15,25 +15,36 @@ func main() {
 	}
 
 	root := filepath.Dir(exe)
-	target := filepath.Join(root, "seall-denshi", "dist", "win-unpacked", "Seall.exe")
-	if _, err := os.Stat(target); err != nil {
-		showMessage("Seall could not find the desktop app.\n\nMissing:\n" + target)
+	packagedDesktop := filepath.Join(root, "seall-denshi", "dist", "win-unpacked", "Seall.exe")
+	sourceElectron := filepath.Join(root, "seall-denshi", "node_modules", "electron", "dist", "electron.exe")
+	denshiDir := filepath.Join(root, "seall-denshi")
+
+	if _, err := os.Stat(packagedDesktop); err == nil {
+		if err := start(packagedDesktop); err != nil {
+			showMessage("Seall could not start.\n\n" + err.Error())
+		}
 		return
 	}
 
-	if err := start(target); err != nil {
-		showMessage("Seall could not start.\n\n" + err.Error())
+	if _, err := os.Stat(sourceElectron); err == nil {
+		if err := startWithArgs(sourceElectron, []string{sourceElectron, denshiDir}, denshiDir); err != nil {
+			showMessage("Seall could not start.\n\n" + err.Error())
+		}
+		return
 	}
+
+	showMessage("Seall could not find the desktop app.\n\nMissing:\n" + packagedDesktop + "\n" + sourceElectron)
 }
 
 func start(target string) error {
-	argv := []string{target}
-	attr := &os.ProcAttr{
-		Dir:   filepath.Dir(target),
-		Files: []*os.File{nil, nil, nil},
-	}
+	return startWithArgs(target, []string{target}, filepath.Dir(target))
+}
 
-	process, err := os.StartProcess(target, argv, attr)
+func startWithArgs(target string, argv []string, dir string) error {
+	process, err := os.StartProcess(target, argv, &os.ProcAttr{
+		Dir:   dir,
+		Files: []*os.File{nil, nil, nil},
+	})
 	if err != nil {
 		return err
 	}
