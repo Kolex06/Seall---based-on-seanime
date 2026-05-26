@@ -116,7 +116,18 @@ func (r *Repository) loadBuiltInExtension(ext extension.Extension, provider inte
 			r.loadBuiltInOnlinestreamProviderExtensionJS(ext)
 		}
 	case extension.TypePlugin:
-		// TODO: Implement
+		err := r.loadPlugin(&ext)
+		if err != nil {
+			r.invalidExtensions.Set(ext.ID, &extension.InvalidExtension{
+				ID:        ext.ID,
+				Reason:    err.Error(),
+				Path:      "",
+				Code:      extension.InvalidExtensionPayloadError,
+				Extension: ext,
+			})
+			r.logger.Error().Err(err).Str("id", ext.ID).Msg("extensions: Failed to load built-in plugin extension")
+			return
+		}
 	}
 
 	r.logger.Debug().Str("id", ext.ID).Msg("extensions: Loaded built-in extension")

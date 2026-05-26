@@ -1,6 +1,8 @@
 package core
 
 import (
+	_ "embed"
+
 	"seall/internal/constants"
 	"seall/internal/extension"
 	"seall/internal/extension_repo"
@@ -8,6 +10,9 @@ import (
 
 	"github.com/rs/zerolog"
 )
+
+//go:embed builtin_plugins/custom_css_manager/provider.ts
+var customCSSManagerPayload string
 
 func LoadCustomSourceExtensions(extensionRepository *extension_repo.Repository) {
 	extensionRepository.LoadOnlyWrapper([]extension.Type{extension.TypeCustomSource}, func() {
@@ -28,6 +33,33 @@ func LoadExtensions(extensionRepository *extension_repo.Repository, logger *zero
 		Lang:        "multi",
 		Icon:        constants.ProjectRawMainUrl + "/seall-denshi/assets/icons/256x256.png",
 	}, manga_providers.NewLocal(config.Manga.LocalDir, logger))
+
+	extensionRepository.ReloadBuiltInExtension(extension.Extension{
+		ID:          "custom-css-manager",
+		Name:        "Custom CSS Manager",
+		Version:     "1.0.10",
+		ManifestURI: "builtin",
+		Language:    extension.LanguageTypescript,
+		Type:        extension.TypePlugin,
+		Description: "Manage Seall custom CSS presets.",
+		Author:      constants.AppName,
+		Lang:        "en",
+		Icon:        constants.ProjectRawMainUrl + "/seall-denshi/assets/icons/256x256.png",
+		Website:     constants.ProjectRepositoryUrl,
+		Payload:     customCSSManagerPayload,
+		Plugin: &extension.PluginManifest{
+			Version: extension.PluginManifestVersion,
+			Permissions: extension.PluginPermissions{
+				Scopes: []extension.PluginPermissionScope{extension.PluginPermissionStorage},
+				Allow: extension.PluginAllowlist{
+					NetworkAccess: extension.PluginNetworkAcess{
+						AllowedDomains: []string{"raw.githubusercontent.com", "jigsaw.w3.org"},
+						Reasoning:      "Used for optional community style refreshes and CSS validation.",
+					},
+				},
+			},
+		},
+	}, nil)
 
 	// Load external extensions
 	//extensionRepository.ReloadExternalExtensions()

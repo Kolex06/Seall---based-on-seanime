@@ -656,6 +656,11 @@ func (r *Repository) loadExternalExtension(filePath string) {
 
 	ext.Lang = extension.GetExtensionLang(ext.Lang)
 
+	if existing, found := r.extensionBankRef.Get().Get(ext.ID); found && existing.GetManifestURI() == "builtin" {
+		r.logger.Debug().Str("id", ext.ID).Str("filepath", filePath).Msg("extensions: Skipped external extension because a built-in extension uses the same ID")
+		return
+	}
+
 	var manifestError error
 
 	// +
