@@ -38,16 +38,18 @@ export function useGetOnlineStreamEpisodeList(id: Nullish<string | number>, prov
 export function useGetOnlineStreamEpisodeSource(id: Nullish<string | number>,
     provider: Nullish<string>,
     episodeNumber: Nullish<number>,
+    seasonNumber: Nullish<number>,
     dubbed: boolean,
     enabled: boolean,
 ) {
     return useServerQuery<Onlinestream_EpisodeSource, GetOnlineStreamEpisodeSource_Variables>({
         endpoint: API_ENDPOINTS.ONLINESTREAM.GetOnlineStreamEpisodeSource.endpoint,
         method: API_ENDPOINTS.ONLINESTREAM.GetOnlineStreamEpisodeSource.methods[0],
-        queryKey: [API_ENDPOINTS.ONLINESTREAM.GetOnlineStreamEpisodeSource.key, String(id), provider, episodeNumber, dubbed],
+        queryKey: [API_ENDPOINTS.ONLINESTREAM.GetOnlineStreamEpisodeSource.key, String(id), provider, episodeNumber, seasonNumber, dubbed],
         data: {
             mediaId: Number(id),
             episodeNumber: episodeNumber!,
+            seasonNumber: seasonNumber || undefined,
             dubbed: dubbed,
             provider: provider!,
         },

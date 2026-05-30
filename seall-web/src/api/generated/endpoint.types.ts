@@ -1576,6 +1576,7 @@ export type GetOnlineStreamEpisodeList_Variables = {
  */
 export type GetOnlineStreamEpisodeSource_Variables = {
     episodeNumber: number
+    seasonNumber?: number
     mediaId: number
     provider: string
     dubbed: boolean

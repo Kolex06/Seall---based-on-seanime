@@ -25,6 +25,7 @@ import {
     __onlinestream_selectedDubbedAtom,
     __onlinestream_selectedEpisodeNumberAtom,
     __onlinestream_selectedProviderAtom,
+    __onlinestream_selectedSeasonAtom,
     __onlinestream_selectedServerAtom,
 } from "@/app/(main)/onlinestream/_lib/onlinestream.atoms"
 import { useOnlinestreamAutoProviderCycler } from "@/app/(main)/onlinestream/_lib/use-onlinestream-auto-provider-cycler"
@@ -35,6 +36,12 @@ import { Popover, PopoverProps } from "@/components/ui/popover"
 import { Select } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { logger, useLatestFunction } from "@/lib/helpers/debug"
+import {
+    ALL_SEASONS_VALUE,
+    filterOnlineStreamEpisodesBySeason,
+    getOnlineStreamEpisodeSeasonNumber,
+    getOnlineStreamSeasonOptions,
+} from "@/lib/helpers/episode-seasons"
 import { usePathname, useRouter, useSearchParams } from "@/lib/navigation"
 import { useWindowSize } from "@uidotdev/usehooks"
 import { AxiosError } from "axios"
@@ -116,6 +123,7 @@ export function OnlinestreamPage({ entry, entryLoading, hideBackButton }: Online
     const [quality, setQuality] = useAtom(__onlinestream_qualityAtom)
     const [dubbed, setDubbed] = useAtom(__onlinestream_selectedDubbedAtom)
     const [provider, setProvider] = useAtom(__onlinestream_selectedProviderAtom)
+    const [selectedSeason, setSelectedSeason] = useAtom(__onlinestream_selectedSeasonAtom)
 
     const [overrideStreamType, setOverrideStreamType] = React.useState<VideoCore_VideoPlaybackInfo["streamType"] | null>(null)
 
@@ -192,7 +200,31 @@ export function OnlinestreamPage({ entry, entryLoading, hideBackButton }: Online
     } = useGetOnlineStreamEpisodeList(mediaId, activeProvider, dubbed)
 
     const episodes = episodeListResponse?.episodes
-    const currentEpisode = episodes?.find(e => e.number === currentEpisodeNumber)
+    const seasonOptions = React.useMemo(() => getOnlineStreamSeasonOptions(episodes), [episodes])
+    const visibleEpisodes = React.useMemo(() => {
+        return filterOnlineStreamEpisodesBySeason(episodes, selectedSeason)
+    }, [episodes, selectedSeason])
+    const currentEpisode = visibleEpisodes?.find(e => e.number === currentEpisodeNumber) ?? episodes?.find(e => e.number === currentEpisodeNumber)
+    const currentEpisodeSeasonNumber = React.useMemo(() => {
+        return getOnlineStreamEpisodeSeasonNumber(currentEpisode)
+    }, [currentEpisode])
+
+    React.useEffect(() => {
+        if (!seasonOptions.length) {
+            if (selectedSeason !== ALL_SEASONS_VALUE) setSelectedSeason(ALL_SEASONS_VALUE)
+            return
+        }
+        if (!seasonOptions.some(option => option.value === selectedSeason)) {
+            setSelectedSeason(ALL_SEASONS_VALUE)
+        }
+    }, [seasonOptions, selectedSeason, setSelectedSeason])
+
+    React.useEffect(() => {
+        if (!visibleEpisodes?.length || isWatchPartyPeer || isLoadingFromWatchPartyRef.current) return
+        if (currentEpisodeNumber === null || !visibleEpisodes.some(episode => episode.number === currentEpisodeNumber)) {
+            setSelectedEpisodeNumber(visibleEpisodes[0].number)
+        }
+    }, [visibleEpisodes, currentEpisodeNumber, isWatchPartyPeer, setSelectedEpisodeNumber])
 
     // AniSkip
     const { data: aniSkipData } = useSkipData(media.idMal, currentEpisode?.number)
@@ -208,6 +240,7 @@ export function OnlinestreamPage({ entry, entryLoading, hideBackButton }: Online
         mediaId,
         activeProvider,
         currentEpisodeNumber,
+        currentEpisodeSeasonNumber,
         (!!extension?.supportsDub) && dubbed,
         !!mediaId && currentEpisodeNumber !== null && isEpisodeListFetched,
     )
@@ -424,7 +457,8 @@ export function OnlinestreamPage({ entry, entryLoading, hideBackButton }: Online
         if (!!media && firstRenderRef.current && !!episodes) {
             const episodeNumberFromURL = urlEpNumber ? Number(urlEpNumber) : undefined
             const progress = entry?.listData?.progress ?? 0
-            const sortedEpisodes = episodes.filter(Boolean).sort((a, b) => a!.number - b!.number)
+            const selectableEpisodes = visibleEpisodes?.length ? visibleEpisodes : episodes
+            const sortedEpisodes = selectableEpisodes.filter(Boolean).sort((a, b) => a!.number - b!.number)
             let episodeNumber = sortedEpisodes[0]?.number ?? 1
             const episodeToWatch = episodes.find(e => e.number === progress + 1)
             if (episodeToWatch) {
@@ -434,7 +468,7 @@ export function OnlinestreamPage({ entry, entryLoading, hideBackButton }: Online
             log.info("Setting episode number to", episodeNumberFromURL || episodeNumber || 1)
             firstRenderRef.current = false
         }
-    }, [episodes, media, entry?.listData, urlEpNumber, currentPlaylist, isWatchPartyPeer])
+    }, [episodes, visibleEpisodes, media, entry?.listData, urlEpNumber, currentPlaylist, isWatchPartyPeer])
 
 
     function onCanPlay() {
@@ -451,7 +485,8 @@ export function OnlinestreamPage({ entry, entryLoading, hideBackButton }: Online
             return
         }
         // check if the episode exists
-        if (episodes?.find(e => e.number === currentEpisodeNumber + 1)) {
+        const selectableEpisodes = visibleEpisodes?.length ? visibleEpisodes : episodes
+        if (selectableEpisodes?.find(e => e.number === currentEpisodeNumber + 1)) {
             setSelectedEpisodeNumber(currentEpisodeNumber + 1)
         }
     })
@@ -464,7 +499,8 @@ export function OnlinestreamPage({ entry, entryLoading, hideBackButton }: Online
         }
         if (currentEpisodeNumber > 1) {
             // check if the episode exists
-            if (episodes?.find(e => e.number === currentEpisodeNumber - 1)) {
+            const selectableEpisodes = visibleEpisodes?.length ? visibleEpisodes : episodes
+            if (selectableEpisodes?.find(e => e.number === currentEpisodeNumber - 1)) {
                 setSelectedEpisodeNumber(currentEpisodeNumber - 1)
             }
         }
@@ -529,6 +565,19 @@ export function OnlinestreamPage({ entry, entryLoading, hideBackButton }: Online
                 className="rounded-full rounded-l-none w-fit"
                 addonClass="rounded-full rounded-r-none"
             />
+            {!!seasonOptions.length && <Select
+                value={selectedSeason}
+                options={seasonOptions}
+                onValueChange={(v) => {
+                    savePreviousStateThen(() => {
+                        setSelectedSeason(v)
+                    })
+                }}
+                placeholder="Season"
+                size="sm"
+                fieldClass="w-fit"
+                className="rounded-full w-fit min-w-[8rem]"
+            />}
             {!!servers.length && <Select
                 size="sm"
                 value={server}
@@ -597,7 +646,7 @@ export function OnlinestreamPage({ entry, entryLoading, hideBackButton }: Online
                 currentEpisodeNumber={currentEpisodeNumber}
                 title={media?.title?.userPreferred}
                 hideBackButton={hideBackButton}
-                episodes={episodes}
+                episodes={visibleEpisodes}
                 loadingEpisodeList={episodeListLoading}
                 leftHeaderActions={<>
                     {parameters}
@@ -724,7 +773,7 @@ export function OnlinestreamPage({ entry, entryLoading, hideBackButton }: Online
                                 transition={{ duration: 0.3 }}
                                 className="space-y-3"
                             >
-                                {episodes?.filter(Boolean)?.sort((a, b) => a!.number - b!.number)?.map((episode, idx) => {
+                                {visibleEpisodes?.filter(Boolean)?.sort((a, b) => a!.number - b!.number)?.map((episode, idx) => {
                                     return (
                                         <EpisodeGridItem
                                             key={idx + (episode.title || "") + episode.number}
@@ -756,12 +805,12 @@ export function OnlinestreamPage({ entry, entryLoading, hideBackButton }: Online
                                         />
                                     )
                                 })}
-                                {!!episodes?.length && <p className="text-center text-[--muted] py-2">End</p>}
+                                {!!visibleEpisodes?.length && <p className="text-center text-[--muted] py-2">End</p>}
                             </motion.div>
                         ) : (
                             <EpisodePillsGrid
                                 key="grid-view"
-                                episodes={episodes?.map(ep => ({
+                                episodes={visibleEpisodes?.map(ep => ({
                                     id: String(ep.number),
                                     number: ep.number,
                                     title: ep.title,

@@ -3,6 +3,8 @@ import { atomWithStorage } from "jotai/utils"
 
 export const __onlinestream_selectedProviderAtom = atomWithStorage<string | null>("sea-onlinestream-provider", null)
 
+export const __onlinestream_selectedSeasonAtom = atomWithStorage<string>("sea-onlinestream-season", "all")
+
 export const __onlinestream_selectedDubbedAtom = atom<boolean>(false)
 
 // Variable used for the episode source query

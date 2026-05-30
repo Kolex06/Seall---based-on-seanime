@@ -19,8 +19,14 @@ import { PageWrapper } from "@/components/shared/page-wrapper"
 import { AppLayoutStack } from "@/components/ui/app-layout"
 import { IconButton } from "@/components/ui/button"
 import { Popover } from "@/components/ui/popover"
+import { Select } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { logger } from "@/lib/helpers/debug"
+import {
+    ALL_SEASONS_VALUE,
+    filterEpisodeCollectionBySeason,
+    getTorrentEpisodeSeasonOptions,
+} from "@/lib/helpers/episode-seasons"
 import { atom } from "jotai"
 import { useAtom, useSetAtom } from "jotai/react"
 import { atomWithStorage } from "jotai/utils"
@@ -37,6 +43,7 @@ type TorrentStreamPageProps = {
 
 export const __torrentStream_autoSelectFileAtom = atomWithStorage("sea-torrentstream-auto-select-file", true)
 export const __torrentStream_currentSessionAutoSelectAtom = atom(false)
+export const __torrentStream_selectedSeasonAtom = atomWithStorage("sea-torrentstream-season", ALL_SEASONS_VALUE)
 
 export function TorrentStreamPage(props: TorrentStreamPageProps) {
 
@@ -52,11 +59,26 @@ export function TorrentStreamPage(props: TorrentStreamPageProps) {
     const [autoSelect, setAutoSelect] = useAtom(__torrentStream_currentSessionAutoSelectAtom)
 
     const [autoSelectFile, setAutoSelectFile] = useAtom(__torrentStream_autoSelectFileAtom)
+    const [selectedSeason, setSelectedSeason] = useAtom(__torrentStream_selectedSeasonAtom)
 
     /**
      * Get all episodes to watch
      */
     const { data: episodeCollection, isLoading } = useGetMediaEpisodeCollection(entry.mediaId)
+    const seasonOptions = React.useMemo(() => getTorrentEpisodeSeasonOptions(episodeCollection), [episodeCollection])
+    const selectedEpisodeCollection = React.useMemo(() => {
+        return filterEpisodeCollectionBySeason(episodeCollection, selectedSeason)
+    }, [episodeCollection, selectedSeason])
+
+    React.useEffect(() => {
+        if (!seasonOptions.length) {
+            if (selectedSeason !== ALL_SEASONS_VALUE) setSelectedSeason(ALL_SEASONS_VALUE)
+            return
+        }
+        if (!seasonOptions.some(option => option.value === selectedSeason)) {
+            setSelectedSeason(ALL_SEASONS_VALUE)
+        }
+    }, [seasonOptions, selectedSeason, setSelectedSeason])
 
     React.useLayoutEffect(() => {
         // Set auto-select to the server status value
@@ -117,12 +139,13 @@ export function TorrentStreamPage(props: TorrentStreamPageProps) {
     // If so, it sets the autoplay info
     // Otherwise, it resets the autoplay info
     function handleSetTorrentstreamAutoplayInfo(episode: Media_Episode | undefined) {
-        if (!episode || !episode.aniDBEpisode || !episodeCollection?.episodes) return
-        const nextEpisode = episodeCollection?.episodes?.find(e => e.episodeNumber === episode.episodeNumber + 1)
+        const activeEpisodeCollection = selectedEpisodeCollection ?? episodeCollection
+        if (!episode || !episode.aniDBEpisode || !activeEpisodeCollection?.episodes) return
+        const nextEpisode = activeEpisodeCollection?.episodes?.find(e => e.episodeNumber === episode.episodeNumber + 1)
         logger("TORRENTSTREAM").info("Auto select, Next episode", nextEpisode)
         if (nextEpisode && !!nextEpisode.aniDBEpisode) {
             setTorrentstreamAutoplayInfo({
-                allEpisodes: episodeCollection?.episodes,
+                allEpisodes: activeEpisodeCollection?.episodes,
                 entry: entry,
                 episodeNumber: nextEpisode.episodeNumber,
                 aniDBEpisode: nextEpisode.aniDBEpisode,
@@ -263,10 +286,10 @@ export function TorrentStreamPage(props: TorrentStreamPageProps) {
 
     // Inject episodes into command palette when they're loaded
     React.useEffect(() => {
-        if (!episodeCollection?.episodes?.length) return
+        if (!selectedEpisodeCollection?.episodes?.length) return
 
         inject("torrent-stream-episodes", {
-            items: episodeCollection.episodes.map(episode => ({
+            items: selectedEpisodeCollection.episodes.map(episode => ({
                 id: `episode-${episode.episodeNumber}`,
                 value: `${episode.episodeNumber}`,
                 heading: "Episodes",
@@ -288,7 +311,7 @@ export function TorrentStreamPage(props: TorrentStreamPageProps) {
         })
 
         return () => remove("torrent-stream-episodes")
-    }, [episodeCollection?.episodes])
+    }, [selectedEpisodeCollection?.episodes])
 
     if (!entry.media) return null
     if (isLoading) return <StreamPageSkeleton />
@@ -322,6 +345,20 @@ export function TorrentStreamPage(props: TorrentStreamPageProps) {
                             // moreHelp="Automatically select the best torrent and file to stream"
                             fieldClass="w-fit flex-none"
                         />
+
+                        {!!seasonOptions.length && (
+                            <Select
+                                label="Season"
+                                value={selectedSeason}
+                                options={seasonOptions}
+                                onValueChange={setSelectedSeason}
+                                placeholder="Season"
+                                size="sm"
+                                fieldClass="w-fit flex-none"
+                                className="rounded-full w-fit min-w-[8rem]"
+                                fieldLabelClass="hidden"
+                            />
+                        )}
 
                         {!autoSelect && !usePreviousBatch && (
                             <Switch
@@ -381,7 +418,7 @@ export function TorrentStreamPage(props: TorrentStreamPageProps) {
 
                     <TorrentStreamEpisodeSection
                         contextType="torrenstream"
-                        episodeCollection={episodeCollection}
+                        episodeCollection={selectedEpisodeCollection}
                         entry={entry}
                         onEpisodeClick={handleEpisodeClick}
                         onPlayExternallyEpisodeClick={!isUsingNativePlayer ? undefined : (episode) => {

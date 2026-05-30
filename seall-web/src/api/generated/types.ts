@@ -4435,6 +4435,7 @@ export type NativePlayer_StreamType = "torrent" | "localfile" | "debrid" | "url"
  */
 export type Onlinestream_Episode = {
     number: number
+    seasonNumber?: number
     title?: string
     image?: string
     description?: string

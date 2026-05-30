@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"seall/internal/api/mediaapi"
+	"seall/internal/api/metadata"
 	"seall/internal/api/metadata_provider"
 	"seall/internal/database/db"
 	"seall/internal/extension"
@@ -39,12 +40,13 @@ var (
 
 type (
 	Episode struct {
-		Number      int            `json:"number"`
-		Title       string         `json:"title,omitempty"`
-		Image       string         `json:"image,omitempty"`
-		Description string         `json:"description,omitempty"`
-		IsFiller    bool           `json:"isFiller,omitempty"`
-		Metadata    *anime.Episode `json:"metadata"`
+		Number       int            `json:"number"`
+		SeasonNumber int            `json:"seasonNumber,omitempty"`
+		Title        string         `json:"title,omitempty"`
+		Image        string         `json:"image,omitempty"`
+		Description  string         `json:"description,omitempty"`
+		IsFiller     bool           `json:"isFiller,omitempty"`
+		Metadata     *anime.Episode `json:"metadata"`
 	}
 
 	EpisodeSource struct {
@@ -170,6 +172,10 @@ func (r *Repository) GetMediaEpisodes(provider string, media *mediaapi.BaseAnime
 		})
 	}
 	foundEpisodeCollection := err == nil && episodeCollection != nil
+	var animeMetadata *metadata.AnimeMetadata
+	if foundEpisodeCollection {
+		animeMetadata = episodeCollection.Metadata
+	}
 
 	// +---------------------+
 	// |    Episode list     |
@@ -177,23 +183,25 @@ func (r *Repository) GetMediaEpisodes(provider string, media *mediaapi.BaseAnime
 
 	// Fetch the episode list from the provider
 	// "from" and "to" are set to 0 in order not to fetch episode servers
-	ec, err := r.getEpisodeContainer(provider, media, 0, 0, dubbed, media.GetStartYearSafe())
+	ec, err := r.getEpisodeContainer(provider, media, 0, 0, dubbed, media.GetStartYearSafe(), 0, nil)
 	if err != nil {
 		return nil, err
 	}
 
 	for _, episodeDetails := range ec.ProviderEpisodeList {
+		seasonNumber := providerEpisodeSeasonNumber(animeMetadata, episodeDetails)
 
 		// If the title contains "[{", it means it's an episode part (e.g. "Episode 6 [{6.5}]", the episode number should be 6)
 		if strings.Contains(episodeDetails.Title, "[{") {
 			ep := strings.Split(episodeDetails.Title, "[{")[1]
 			ep = strings.Split(ep, "}]")[0]
 			episodes = append(episodes, &Episode{
-				Number:      episodeDetails.Number,
-				Title:       fmt.Sprintf("Episode %s", ep),
-				Image:       media.GetBannerImageSafe(),
-				Description: "",
-				IsFiller:    false,
+				Number:       episodeDetails.Number,
+				SeasonNumber: seasonNumber,
+				Title:        fmt.Sprintf("Episode %s", ep),
+				Image:        media.GetBannerImageSafe(),
+				Description:  "",
+				IsFiller:     false,
 			})
 
 		} else {
@@ -202,25 +210,28 @@ func (r *Repository) GetMediaEpisodes(provider string, media *mediaapi.BaseAnime
 				episode, found := episodeCollection.FindEpisodeByNumber(episodeDetails.Number)
 				if found {
 					episodes = append(episodes, &Episode{
-						Number:      episodeDetails.Number,
-						Title:       episode.EpisodeTitle,
-						Image:       episode.EpisodeMetadata.Image,
-						Description: episode.EpisodeMetadata.Summary,
-						IsFiller:    episode.EpisodeMetadata.IsFiller,
-						Metadata:    episode,
+						Number:       episodeDetails.Number,
+						SeasonNumber: seasonNumber,
+						Title:        episode.EpisodeTitle,
+						Image:        episode.EpisodeMetadata.Image,
+						Description:  episode.EpisodeMetadata.Summary,
+						IsFiller:     episode.EpisodeMetadata.IsFiller,
+						Metadata:     episode,
 					})
 				} else {
 					episodes = append(episodes, &Episode{
-						Number: episodeDetails.Number,
-						Title:  episodeDetails.Title,
-						Image:  media.GetCoverImageSafe(),
+						Number:       episodeDetails.Number,
+						SeasonNumber: seasonNumber,
+						Title:        episodeDetails.Title,
+						Image:        media.GetCoverImageSafe(),
 					})
 				}
 			} else {
 				episodes = append(episodes, &Episode{
-					Number: episodeDetails.Number,
-					Title:  episodeDetails.Title,
-					Image:  media.GetCoverImageSafe(),
+					Number:       episodeDetails.Number,
+					SeasonNumber: seasonNumber,
+					Title:        episodeDetails.Title,
+					Image:        media.GetCoverImageSafe(),
 				})
 			}
 
@@ -234,7 +245,7 @@ func (r *Repository) GetMediaEpisodes(provider string, media *mediaapi.BaseAnime
 	return episodes, nil
 }
 
-func (r *Repository) GetEpisodeSources(ctx context.Context, provider string, mId int, number int, dubbed bool, year int) (*EpisodeSource, error) {
+func (r *Repository) GetEpisodeSources(ctx context.Context, provider string, mId int, number int, seasonNumber int, dubbed bool, year int) (*EpisodeSource, error) {
 
 	// +---------------------+
 	// |        Media        |
@@ -249,7 +260,19 @@ func (r *Repository) GetEpisodeSources(ctx context.Context, provider string, mId
 	// |   Episode servers   |
 	// +---------------------+
 
-	ec, err := r.getEpisodeContainer(provider, media, number, number, dubbed, year)
+	var animeMetadata *metadata.AnimeMetadata
+	if MediaTypeForBaseMedia(media) == hibikeonlinestream.MediaTypeAnime {
+		if episodeCollection, err := anime.NewEpisodeCollection(anime.NewEpisodeCollectionOptions{
+			AnimeMetadata:       nil,
+			Media:               media,
+			MetadataProviderRef: r.metadataProviderRef,
+			Logger:              r.logger,
+		}); err == nil && episodeCollection != nil {
+			animeMetadata = episodeCollection.Metadata
+		}
+	}
+
+	ec, err := r.getEpisodeContainer(provider, media, number, number, dubbed, year, seasonNumber, animeMetadata)
 	if err != nil {
 		return nil, err
 	}

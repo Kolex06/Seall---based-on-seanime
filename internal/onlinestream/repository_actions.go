@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"seall/internal/api/mediaapi"
+	"seall/internal/api/metadata"
 	"seall/internal/extension"
 	hibikeonlinestream "seall/internal/extension/hibike/onlinestream"
 	onlinestream_providers "seall/internal/onlinestream/providers"
@@ -43,13 +44,23 @@ type (
 //   - This function can be used to only get the episode details by setting 'from' and 'to' to 0.
 //
 // Since the episode details are cached, we can request episode servers multiple times without fetching the episode details again.
-func (r *Repository) getEpisodeContainer(provider string, media *mediaapi.BaseAnime, from int, to int, dubbed bool, year int) (*episodeContainer, error) {
+func (r *Repository) getEpisodeContainer(
+	provider string,
+	media *mediaapi.BaseAnime,
+	from int,
+	to int,
+	dubbed bool,
+	year int,
+	seasonNumber int,
+	animeMetadata *metadata.AnimeMetadata,
+) (*episodeContainer, error) {
 
 	r.logger.Debug().
 		Str("provider", provider).
 		Int("mediaId", media.ID).
 		Int("from", from).
 		Int("to", to).
+		Int("seasonNumber", seasonNumber).
 		Bool("dubbed", dubbed).
 		Msg("onlinestream: Getting episode container")
 
@@ -97,9 +108,12 @@ func (r *Repository) getEpisodeContainer(provider string, media *mediaapi.BaseAn
 	for _, episodeDetails := range providerEpisodeList {
 
 		if episodeDetails.Number >= from && episodeDetails.Number <= to {
+			if !providerEpisodeMatchesSeason(animeMetadata, episodeDetails, seasonNumber) {
+				continue
+			}
 
 			// Check if the episode is cached to avoid fetching the sources again.
-			key := fmt.Sprintf("%d$%s$%d$%v", media.ID, provider, episodeDetails.Number, dubbed)
+			key := fmt.Sprintf("%d$%s$%d$%d$%v", media.ID, provider, episodeDetails.Number, seasonNumber, dubbed)
 
 			r.logger.Debug().
 				Str("key", key).
