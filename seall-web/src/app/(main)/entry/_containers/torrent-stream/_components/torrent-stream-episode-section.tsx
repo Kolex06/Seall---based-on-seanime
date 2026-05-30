@@ -4,13 +4,14 @@ import { EpisodeCard } from "@/app/(main)/_features/anime/_components/episode-ca
 import { EpisodeGridItem } from "@/app/(main)/_features/anime/_components/episode-grid-item"
 import { MediaEpisodeInfoModal } from "@/app/(main)/_features/media/_components/media-episode-info-modal"
 import { PluginEpisodeGridItemMenuItems } from "@/app/(main)/_features/plugin/actions/plugin-actions"
-import { EpisodeListPaginatedGrid } from "@/app/(main)/entry/_components/episode-list-grid"
+import { EpisodeListGrid, EpisodeListPaginatedGrid } from "@/app/(main)/entry/_components/episode-list-grid"
 import { usePlayNextVideoOnMount } from "@/app/(main)/entry/_lib/handle-play-on-mount"
 import { episodeCardCarouselItemClass } from "@/components/shared/classnames"
 import { IconButton } from "@/components/ui/button"
 import { Carousel, CarouselContent, CarouselDotButtons, CarouselItem } from "@/components/ui/carousel"
 import { ContextMenuItem } from "@/components/ui/context-menu"
 import { DropdownMenu, DropdownMenuItem } from "@/components/ui/dropdown-menu"
+import { getTorrentEpisodeSeasonGroups } from "@/lib/helpers/episode-seasons"
 import { useThemeSettings } from "@/lib/theme/theme-hooks"
 import React, { useMemo } from "react"
 import { BiDotsHorizontal } from "react-icons/bi"
@@ -55,6 +56,14 @@ export function TorrentStreamEpisodeSection(props: TorrentStreamEpisodeSectionPr
         )?.slice(0, 30) || []
         return ret
     }, [episodeCollection?.episodes, entry.nextEpisode, entry.listData?.progress])
+    const episodeSeasonGroups = useMemo(() => {
+        return getTorrentEpisodeSeasonGroups(episodeCollection)
+            .map(group => ({
+                ...group,
+                episodes: [...group.episodes].sort((a, b) => (a.progressNumber || a.episodeNumber || 0) - (b.progressNumber || b.episodeNumber || 0)),
+            }))
+    }, [episodeCollection])
+    const shouldSplitEpisodeGridBySeason = episodeSeasonGroups.length > 1
 
     /**
      * Play next episode on mount if requested
@@ -66,6 +75,66 @@ export function TorrentStreamEpisodeSection(props: TorrentStreamEpisodeSectionPr
     }, !!episodesToWatch[0])
 
     if (!entry || !episodeCollection) return null
+
+    function renderGridEpisodeItem(episode: Media_Episode | undefined, keyPrefix = "") {
+        if (!episode) return null
+
+        return (
+            <EpisodeGridItem
+                key={`${keyPrefix}${episode?.episodeNumber}-${episode?.displayTitle || ""}`}
+                media={episode?.baseAnime as any}
+                title={episode?.displayTitle || episode?.baseAnime?.title?.userPreferred || ""}
+                image={episode?.episodeMetadata?.image || episode?.baseAnime?.coverImage?.large}
+                episodeTitle={episode?.episodeTitle}
+                onClick={() => {
+                    onEpisodeClick(episode)
+                }}
+                description={episode?.episodeMetadata?.overview}
+                isFiller={episode?.episodeMetadata?.isFiller}
+                length={episode?.episodeMetadata?.length}
+                isWatched={!!entry.listData?.progress && entry.listData.progress >= (episode?.progressNumber || 0)}
+                className="flex-none w-full"
+                episodeNumber={episode?.episodeNumber}
+                watchedProgress={entry.listData?.progress}
+                progressNumber={episode?.progressNumber}
+                action={<>
+                    <MediaEpisodeInfoModal
+                        title={episode?.displayTitle}
+                        image={episode?.episodeMetadata?.image}
+                        episodeTitle={episode?.episodeTitle}
+                        airDate={episode?.episodeMetadata?.airDate}
+                        length={episode?.episodeMetadata?.length}
+                        summary={episode?.episodeMetadata?.overview}
+                        isInvalid={episode?.isInvalid}
+                    />
+
+                    {!!onPlayExternallyEpisodeClick ? <DropdownMenu
+                        trigger={
+                            <IconButton
+                                icon={<BiDotsHorizontal />}
+                                intent="gray-basic"
+                                size="xs"
+                            />
+                        }
+                    >
+
+                        {onPlayExternallyEpisodeClick && <DropdownMenuItem
+                            onClick={() => {
+                                onPlayExternallyEpisodeClick(episode)
+                            }}
+                        >
+                            <LuTvMinimalPlay />
+                            Play externally
+                        </DropdownMenuItem>}
+                        <PluginEpisodeGridItemMenuItems isDropdownMenu={false} type={contextType} episode={episode} />
+                    </DropdownMenu> : (
+                        <PluginEpisodeGridItemMenuItems isDropdownMenu={true} type={contextType} episode={episode} />
+                    )}
+
+                </>}
+            />
+        )
+    }
 
     return (
         <>
@@ -123,67 +192,30 @@ export function TorrentStreamEpisodeSection(props: TorrentStreamEpisodeSectionPr
                 </CarouselContent>
             </Carousel>
 
-            <EpisodeListPaginatedGrid
-                length={episodeCollection?.episodes?.length || 0}
-                shouldDefaultToPageWithEpisode={entry.listData?.progress ? entry.listData?.progress + 1 : undefined}
-                renderItem={(index) => {
-                    const episode = episodeCollection?.episodes?.[index]
-                    return (<EpisodeGridItem
-                            key={episode?.episodeNumber + (episode?.displayTitle || "")}
-                            media={episode?.baseAnime as any}
-                            title={episode?.displayTitle || episode?.baseAnime?.title?.userPreferred || ""}
-                            image={episode?.episodeMetadata?.image || episode?.baseAnime?.coverImage?.large}
-                            episodeTitle={episode?.episodeTitle}
-                            onClick={() => {
-                                onEpisodeClick(episode as Media_Episode)
-                            }}
-                            description={episode?.episodeMetadata?.overview}
-                            isFiller={episode?.episodeMetadata?.isFiller}
-                            length={episode?.episodeMetadata?.length}
-                            isWatched={!!entry.listData?.progress && entry.listData.progress >= (episode?.progressNumber || 0)}
-                            className="flex-none w-full"
-                            episodeNumber={episode?.episodeNumber}
-                            watchedProgress={entry.listData?.progress}
-                            progressNumber={episode?.progressNumber}
-                            action={<>
-                                <MediaEpisodeInfoModal
-                                    title={episode?.displayTitle}
-                                    image={episode?.episodeMetadata?.image}
-                                    episodeTitle={episode?.episodeTitle}
-                                    airDate={episode?.episodeMetadata?.airDate}
-                                    length={episode?.episodeMetadata?.length}
-                                    summary={episode?.episodeMetadata?.overview}
-                                    isInvalid={episode?.isInvalid}
-                                />
-
-                                {!!onPlayExternallyEpisodeClick ? <DropdownMenu
-                                    trigger={
-                                        <IconButton
-                                            icon={<BiDotsHorizontal />}
-                                            intent="gray-basic"
-                                            size="xs"
-                                        />
-                                    }
-                                >
-
-                                    {onPlayExternallyEpisodeClick && <DropdownMenuItem
-                                        onClick={() => {
-                                            onPlayExternallyEpisodeClick(episode as Media_Episode)
-                                        }}
-                                    >
-                                        <LuTvMinimalPlay />
-                                        Play externally
-                                    </DropdownMenuItem>}
-                                    <PluginEpisodeGridItemMenuItems isDropdownMenu={false} type={contextType} episode={episode as Media_Episode} />
-                                </DropdownMenu> : (
-                                    <PluginEpisodeGridItemMenuItems isDropdownMenu={true} type={contextType} episode={episode as Media_Episode} />
-                                )}
-
-                            </>}
-                        />
-                    )
-                }}
-            />
+            {shouldSplitEpisodeGridBySeason ? (
+                <div className="space-y-8">
+                    {episodeSeasonGroups.map(group => (
+                        <section key={`season-${group.seasonNumber ?? "other"}`} className="space-y-3">
+                            <div className="flex items-center justify-between gap-3">
+                                <h3 className="text-sm font-semibold uppercase tracking-wide text-[--muted]">{group.label}</h3>
+                                <span className="text-xs text-[--muted]">{group.episodes.length} episodes</span>
+                            </div>
+                            <EpisodeListGrid>
+                                {group.episodes.map(episode => renderGridEpisodeItem(episode, `s${group.seasonNumber ?? "other"}-`))}
+                            </EpisodeListGrid>
+                        </section>
+                    ))}
+                </div>
+            ) : (
+                <EpisodeListPaginatedGrid
+                    length={episodeCollection?.episodes?.length || 0}
+                    shouldDefaultToPageWithEpisode={entry.listData?.progress ? entry.listData?.progress + 1 : undefined}
+                    renderItem={(index) => {
+                        const episode = episodeCollection?.episodes?.[index]
+                        return renderGridEpisodeItem(episode)
+                    }}
+                />
+            )}
 
             {bottomSection}
         </>

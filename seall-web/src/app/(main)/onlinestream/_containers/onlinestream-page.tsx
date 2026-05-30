@@ -1,5 +1,5 @@
 import { getServerBaseUrl } from "@/api/client/server-url"
-import { Media_Entry } from "@/api/generated/types"
+import { Media_Entry, Onlinestream_Episode } from "@/api/generated/types"
 import { useGetOnlineStreamEpisodeList, useGetOnlineStreamEpisodeSource, useOnlineStreamEmptyCache } from "@/api/hooks/onlinestream.hooks"
 import { serverStatusAtom } from "@/app/(main)/_atoms/server-status.atoms"
 import { EpisodeGridItem } from "@/app/(main)/_features/anime/_components/episode-grid-item"
@@ -40,6 +40,7 @@ import {
     ALL_SEASONS_VALUE,
     filterOnlineStreamEpisodesBySeason,
     getOnlineStreamEpisodeSeasonNumber,
+    getOnlineStreamEpisodeSeasonGroups,
     getOnlineStreamSeasonOptions,
 } from "@/lib/helpers/episode-seasons"
 import { usePathname, useRouter, useSearchParams } from "@/lib/navigation"
@@ -204,6 +205,20 @@ export function OnlinestreamPage({ entry, entryLoading, hideBackButton }: Online
     const visibleEpisodes = React.useMemo(() => {
         return filterOnlineStreamEpisodesBySeason(episodes, selectedSeason)
     }, [episodes, selectedSeason])
+    const sortedVisibleEpisodes = React.useMemo(() => {
+        return [...(visibleEpisodes ?? [])]
+            .filter(Boolean)
+            .sort((a, b) => a.number - b.number)
+    }, [visibleEpisodes])
+    const visibleEpisodeSeasonGroups = React.useMemo(() => {
+        if (selectedSeason !== ALL_SEASONS_VALUE) return []
+        return getOnlineStreamEpisodeSeasonGroups(visibleEpisodes)
+            .map(group => ({
+                ...group,
+                episodes: [...group.episodes].filter(Boolean).sort((a, b) => a.number - b.number),
+            }))
+    }, [visibleEpisodes, selectedSeason])
+    const shouldSplitVisibleEpisodesBySeason = visibleEpisodeSeasonGroups.length > 1
     const currentEpisode = visibleEpisodes?.find(e => e.number === currentEpisodeNumber) ?? episodes?.find(e => e.number === currentEpisodeNumber)
     const currentEpisodeSeasonNumber = React.useMemo(() => {
         return getOnlineStreamEpisodeSeasonNumber(currentEpisode)
@@ -414,6 +429,16 @@ export function OnlinestreamPage({ entry, entryLoading, hideBackButton }: Online
         })
     }
 
+    function selectOnlineStreamEpisode(episode: Onlinestream_Episode) {
+        savePreviousStateThen(() => {
+            const seasonNumber = getOnlineStreamEpisodeSeasonNumber(episode)
+            if (selectedSeason === ALL_SEASONS_VALUE && seasonNumber) {
+                setSelectedSeason(String(seasonNumber))
+            }
+            setSelectedEpisodeNumber(episode.number)
+        })
+    }
+
     const changeQuality = React.useCallback((source: VideoCore_VideoSource) => {
         savePreviousStateThen(() => {
             setQuality(source.resolution)
@@ -616,6 +641,39 @@ export function OnlinestreamPage({ entry, entryLoading, hideBackButton }: Online
         </>
     )
 
+    function renderEpisodeItem(episode: Onlinestream_Episode, keyPrefix = "") {
+        return (
+            <EpisodeGridItem
+                key={`${keyPrefix}${episode.title || ""}-${episode.number}`}
+                id={`episode-${keyPrefix}${String(episode.number)}`}
+                onClick={() => selectOnlineStreamEpisode(episode)}
+                title={media.format === "MOVIE" ? "Complete movie" : `Episode ${episode.number}`}
+                episodeTitle={episode.title}
+                description={episode.description ?? undefined}
+                image={episode.image}
+                media={media}
+                isSelected={episode.number === currentEpisodeNumber && getOnlineStreamEpisodeSeasonNumber(episode) === currentEpisodeSeasonNumber}
+                disabled={episodeLoading}
+                isWatched={progress ? episode.number <= progress : undefined}
+                className="flex-none w-full"
+                isFiller={episode.isFiller}
+                episodeNumber={episode.number}
+                watchedProgress={progress}
+                progressNumber={episode.number}
+                action={<>
+                    <MediaEpisodeInfoModal
+                        title={media.format === "MOVIE" ? "Complete movie" : `Episode ${episode.number}`}
+                        image={episode?.image}
+                        episodeTitle={episode.title}
+                        summary={episode?.description}
+                    />
+
+                    <PluginEpisodeGridItemMenuItems isDropdownMenu={true} type="onlinestream" episode={episode} />
+                </>}
+            />
+        )
+    }
+
     if (!media || entryLoading) return <div data-onlinestream-page-loading-container className="space-y-4">
         <div className="flex gap-4 items-center relative">
             <Skeleton className="h-12" />
@@ -771,57 +829,76 @@ export function OnlinestreamPage({ entry, entryLoading, hideBackButton }: Online
                                 animate={{ opacity: 1, y: 0 }}
                                 exit={{ opacity: 0, y: -20 }}
                                 transition={{ duration: 0.3 }}
-                                className="space-y-3"
+                                className="space-y-6"
                             >
-                                {visibleEpisodes?.filter(Boolean)?.sort((a, b) => a!.number - b!.number)?.map((episode, idx) => {
-                                    return (
-                                        <EpisodeGridItem
-                                            key={idx + (episode.title || "") + episode.number}
-                                            id={`episode-${String(episode.number)}`}
-                                            onClick={() => setSelectedEpisodeNumber(episode.number)}
-                                            title={media.format === "MOVIE" ? "Complete movie" : `Episode ${episode.number}`}
-                                            episodeTitle={episode.title}
-                                            description={episode.description ?? undefined}
-                                            image={episode.image}
-                                            media={media}
-                                            isSelected={episode.number === currentEpisodeNumber}
-                                            disabled={episodeLoading}
-                                            isWatched={progress ? episode.number <= progress : undefined}
-                                            className="flex-none w-full"
-                                            isFiller={episode.isFiller}
-                                            episodeNumber={episode.number}
-                                            watchedProgress={progress}
-                                            progressNumber={episode.number}
-                                            action={<>
-                                                <MediaEpisodeInfoModal
-                                                    title={media.format === "MOVIE" ? "Complete movie" : `Episode ${episode.number}`}
-                                                    image={episode?.image}
-                                                    episodeTitle={episode.title}
-                                                    summary={episode?.description}
-                                                />
-
-                                                <PluginEpisodeGridItemMenuItems isDropdownMenu={true} type="onlinestream" episode={episode} />
-                                            </>}
-                                        />
-                                    )
-                                })}
-                                {!!visibleEpisodes?.length && <p className="text-center text-[--muted] py-2">End</p>}
+                                {shouldSplitVisibleEpisodesBySeason ? visibleEpisodeSeasonGroups.map(group => (
+                                    <section key={`season-${group.seasonNumber ?? "other"}`} className="space-y-3">
+                                        <div className="flex items-center justify-between gap-3">
+                                            <h3 className="text-sm font-semibold uppercase tracking-wide text-[--muted]">{group.label}</h3>
+                                            <span className="text-xs text-[--muted]">{group.episodes.length} episodes</span>
+                                        </div>
+                                        <div className="space-y-3">
+                                            {group.episodes.map(episode => renderEpisodeItem(episode, `s${group.seasonNumber ?? "other"}-`))}
+                                        </div>
+                                    </section>
+                                )) : sortedVisibleEpisodes.map(episode => renderEpisodeItem(episode))}
+                                {!!sortedVisibleEpisodes.length && <p className="text-center text-[--muted] py-2">End</p>}
                             </motion.div>
                         ) : (
-                            <EpisodePillsGrid
-                                key="grid-view"
-                                episodes={visibleEpisodes?.map(ep => ({
-                                    id: String(ep.number),
-                                    number: ep.number,
-                                    title: ep.title,
-                                    isFiller: ep.isFiller,
-                                })) || []}
-                                currentEpisodeNumber={currentEpisodeNumber}
-                                onEpisodeSelect={setSelectedEpisodeNumber}
-                                progress={progress}
-                                disabled={episodeLoading}
-                                getEpisodeId={(ep) => `episode-${ep.number}`}
-                            />
+                            shouldSplitVisibleEpisodesBySeason ? (
+                                <motion.div
+                                    key="grid-view-split"
+                                    initial={{ opacity: 0, y: 20 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    exit={{ opacity: 0, y: -20 }}
+                                    transition={{ duration: 0.3 }}
+                                    className="space-y-6"
+                                >
+                                    {visibleEpisodeSeasonGroups.map(group => (
+                                        <section key={`season-grid-${group.seasonNumber ?? "other"}`} className="space-y-3">
+                                            <div className="flex items-center justify-between gap-3">
+                                                <h3 className="text-sm font-semibold uppercase tracking-wide text-[--muted]">{group.label}</h3>
+                                                <span className="text-xs text-[--muted]">{group.episodes.length} episodes</span>
+                                            </div>
+                                            <EpisodePillsGrid
+                                                episodes={group.episodes.map(ep => ({
+                                                    id: `s${group.seasonNumber ?? "other"}-${ep.number}`,
+                                                    number: ep.number,
+                                                    title: ep.title,
+                                                    isFiller: ep.isFiller,
+                                                }))}
+                                                currentEpisodeNumber={currentEpisodeSeasonNumber === group.seasonNumber ? currentEpisodeNumber : null}
+                                                onEpisodeSelect={(episodeNumber) => {
+                                                    const episode = group.episodes.find(ep => ep.number === episodeNumber)
+                                                    if (episode) selectOnlineStreamEpisode(episode)
+                                                }}
+                                                progress={progress}
+                                                disabled={episodeLoading}
+                                                className="pb-0"
+                                                getEpisodeId={(ep) => `episode-${ep.id}`}
+                                            />
+                                        </section>
+                                    ))}
+                                </motion.div>
+                            ) : (
+                                <EpisodePillsGrid
+                                    key="grid-view"
+                                    episodes={sortedVisibleEpisodes.map(ep => ({
+                                        id: String(ep.number),
+                                        number: ep.number,
+                                        title: ep.title,
+                                        isFiller: ep.isFiller,
+                                    }))}
+                                    currentEpisodeNumber={currentEpisodeNumber}
+                                    onEpisodeSelect={(episodeNumber) => {
+                                        const episode = sortedVisibleEpisodes.find(ep => ep.number === episodeNumber)
+                                        if (episode) selectOnlineStreamEpisode(episode)
+                                    }}
+                                    progress={progress}
+                                    disabled={episodeLoading}
+                                    getEpisodeId={(ep) => `episode-${ep.number}`}
+                                />
+                            )
                         )}
                     </AnimatePresence>
                 </>}

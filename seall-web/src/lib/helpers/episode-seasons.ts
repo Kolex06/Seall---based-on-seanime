@@ -12,6 +12,12 @@ type SeasonOption = {
     value: string
 }
 
+export type EpisodeSeasonGroup<T> = {
+    seasonNumber: number | null
+    label: string
+    episodes: T[]
+}
+
 function validSeasonNumber(value: unknown): number | null {
     const season = typeof value === "number" ? value : Number(value)
     if (!Number.isFinite(season) || season <= 0) return null
@@ -31,6 +37,42 @@ export function seasonOptionsFromNumbers(seasons: Array<number | null | undefine
         { label: "All seasons", value: ALL_SEASONS_VALUE },
         ...numbers.map(season => ({ label: `Season ${season}`, value: String(season) })),
     ]
+}
+
+function seasonGroupLabel(seasonNumber: number | null) {
+    return seasonNumber ? `Season ${seasonNumber}` : "Other episodes"
+}
+
+export function groupEpisodesBySeason<T>(
+    episodes: Array<T> | undefined,
+    getSeasonNumber: (episode: T) => number | null | undefined,
+): EpisodeSeasonGroup<T>[] {
+    const groups = new Map<string, EpisodeSeasonGroup<T>>()
+
+    for (const episode of episodes ?? []) {
+        const seasonNumber = validSeasonNumber(getSeasonNumber(episode))
+        const key = seasonNumber ? String(seasonNumber) : "other"
+        const existing = groups.get(key)
+
+        if (existing) {
+            existing.episodes.push(episode)
+            continue
+        }
+
+        groups.set(key, {
+            seasonNumber,
+            label: seasonGroupLabel(seasonNumber),
+            episodes: [episode],
+        })
+    }
+
+    return Array.from(groups.values())
+        .sort((a, b) => {
+            if (a.seasonNumber && b.seasonNumber) return a.seasonNumber - b.seasonNumber
+            if (a.seasonNumber) return -1
+            if (b.seasonNumber) return 1
+            return 0
+        })
 }
 
 function metadataEpisodeCandidates(episode: Media_Episode) {
@@ -73,6 +115,10 @@ export function getTorrentEpisodeSeasonOptions(episodeCollection: Media_EpisodeC
         .map(episode => getMediaEpisodeSeasonNumber(episode, episodeCollection?.metadata)))
 }
 
+export function getTorrentEpisodeSeasonGroups(episodeCollection: Media_EpisodeCollection | undefined) {
+    return groupEpisodesBySeason(episodeCollection?.episodes, episode => getMediaEpisodeSeasonNumber(episode, episodeCollection?.metadata))
+}
+
 export function filterEpisodeCollectionBySeason(episodeCollection: Media_EpisodeCollection | undefined, selectedSeason: string) {
     if (!episodeCollection || selectedSeason === ALL_SEASONS_VALUE) return episodeCollection
 
@@ -102,6 +148,10 @@ export function getOnlineStreamEpisodeSeasonNumber(episode: Onlinestream_Episode
 
 export function getOnlineStreamSeasonOptions(episodes: Array<Onlinestream_Episode> | undefined) {
     return seasonOptionsFromNumbers((episodes ?? []).map(getOnlineStreamEpisodeSeasonNumber))
+}
+
+export function getOnlineStreamEpisodeSeasonGroups(episodes: Array<Onlinestream_Episode> | undefined) {
+    return groupEpisodesBySeason(episodes, getOnlineStreamEpisodeSeasonNumber)
 }
 
 export function filterOnlineStreamEpisodesBySeason(episodes: Array<Onlinestream_Episode> | undefined, selectedSeason: string) {
