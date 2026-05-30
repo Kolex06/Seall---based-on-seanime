@@ -537,7 +537,7 @@ func (h *Handler) HandleListRecentAiringMedia(c echo.Context) error {
 		return h.RespondWithData(c, cached)
 	}
 
-	ret, err := h.listRecentAiringMediaViaSimklREST(c.Request().Context(), page, perPage, p.Search)
+	ret, err := h.listRecentAiringMediaViaSimklREST(c.Request().Context(), page, perPage, p.Search, p.AiringAtGreater, p.AiringAtLesser, p.NotYetAired, p.Sort)
 	if err != nil {
 		return h.RespondWithError(c, err)
 	}
@@ -632,29 +632,32 @@ func (h *Handler) getSIMKLCalendarItemsPartial(ctx context.Context, now time.Tim
 	return ret, nil
 }
 
-func (h *Handler) listRecentAiringMediaViaSimklREST(ctx context.Context, page int, perPage int, search *string) (*mediaapi.ListRecentAnime, error) {
-	client := h.App.SimklClientRef.Get()
+func (h *Handler) listRecentAiringMediaViaSimklREST(
+	ctx context.Context,
+	page int,
+	perPage int,
+	search *string,
+	airingAtGreater *int,
+	airingAtLesser *int,
+	notYetAired *bool,
+	sorts []*mediaapi.AiringSort,
+) (*mediaapi.ListRecentAnime, error) {
 	term := ""
 	if search != nil {
 		term = strings.TrimSpace(*search)
 	}
 
-	items := make([]simklapi.DiscoveryMedia, 0, perPage)
-	if term != "" {
-		ret, err := client.SearchMedia(ctx, simklapi.MediaTypeAnime, term)
-		if err != nil {
-			return nil, err
-		}
-		items = append(items, ret...)
-	} else {
-		ret, err := client.TrendingMedia(ctx, simklapi.MediaTypeAnime, 1, page*perPage)
-		if err != nil {
-			return nil, err
-		}
-		items = append(items, ret...)
+	start, end := simklAiringRange(airingAtGreater, airingAtLesser, notYetAired)
+	items, err := h.getSIMKLCalendarItemsFor(ctx, start, []simklapi.MediaType{
+		simklapi.MediaTypeMovies,
+		simklapi.MediaTypeShows,
+		simklapi.MediaTypeAnime,
+	}, simklCalendarMonthSpan(start, end))
+	if err != nil {
+		return nil, err
 	}
 
-	return listRecentAnimeFromDiscovery(dedupeDiscoveryMedia(items), page, perPage), nil
+	return listRecentAnimeFromCalendarItems(items, page, perPage, term, airingAtGreater, airingAtLesser, sorts), nil
 }
 
 func mediaKindsForFormat(format *mediaapi.MediaFormat) []simklapi.MediaType {
@@ -725,6 +728,188 @@ func listRecentAnimeFromDiscovery(items []simklapi.DiscoveryMedia, page int, per
 			AiringSchedules: schedules,
 			PageInfo:        recentPageInfo,
 		},
+	}
+}
+
+func listRecentAnimeFromCalendarItems(
+	items []simklapi.CalendarItem,
+	page int,
+	perPage int,
+	search string,
+	airingAtGreater *int,
+	airingAtLesser *int,
+	sorts []*mediaapi.AiringSort,
+) *mediaapi.ListRecentAnime {
+	search = strings.ToLower(strings.TrimSpace(search))
+	now := int(time.Now().Unix())
+	schedules := make([]*mediaapi.ListRecentAnime_Page_AiringSchedules, 0, len(items))
+	seen := make(map[string]struct{}, len(items))
+
+	for _, item := range items {
+		dateTime, ok := simklCalendarItemTime(item)
+		if !ok {
+			continue
+		}
+		airingAt := int(dateTime.Unix())
+		if airingAtGreater != nil && airingAt <= *airingAtGreater {
+			continue
+		}
+		if airingAtLesser != nil && airingAt >= *airingAtLesser {
+			continue
+		}
+		if search != "" && !strings.Contains(strings.ToLower(item.Title), search) {
+			continue
+		}
+
+		discoveryItems := simklapi.DiscoveryMediaFromCalendarItems([]simklapi.CalendarItem{item})
+		if len(discoveryItems) == 0 {
+			continue
+		}
+		media := simklapi.ToBaseAnime(discoveryItems[0].Kind, &discoveryItems[0].Media)
+		if media == nil {
+			continue
+		}
+
+		episode := 1
+		if item.Episode != nil && item.Episode.Episode > 0 {
+			episode = item.Episode.Episode
+		}
+		if discoveryItems[0].Kind == simklapi.MediaTypeMovies {
+			episode = 1
+		}
+
+		isAdult := false
+		media.IsAdult = &isAdult
+		media.NextAiringEpisode = &mediaapi.BaseAnime_NextAiringEpisode{
+			AiringAt:        airingAt,
+			Episode:         episode,
+			TimeUntilAiring: airingAt - now,
+		}
+
+		key := fmt.Sprintf("%s-%d-%d-%d", discoveryItems[0].Kind, media.ID, episode, airingAt)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+
+		schedules = append(schedules, &mediaapi.ListRecentAnime_Page_AiringSchedules{
+			ID:              media.ID*10000 + episode,
+			AiringAt:        airingAt,
+			Episode:         episode,
+			Media:           media,
+			TimeUntilAiring: airingAt - now,
+		})
+	}
+
+	sortCalendarAiringSchedules(schedules, sorts, airingAtLesser)
+	pageItems, pageInfo := paginateAiringSchedules(schedules, page, perPage)
+	return &mediaapi.ListRecentAnime{
+		Page: &mediaapi.ListRecentAnime_Page{
+			AiringSchedules: pageItems,
+			PageInfo:        pageInfo,
+		},
+	}
+}
+
+func simklAiringRange(airingAtGreater *int, airingAtLesser *int, notYetAired *bool) (time.Time, time.Time) {
+	now := time.Now().UTC()
+	start := now.AddDate(0, 0, -14)
+	end := now
+	if notYetAired != nil && *notYetAired {
+		start = now
+		end = now.AddDate(0, 0, 14)
+	}
+	if airingAtGreater != nil {
+		start = time.Unix(int64(*airingAtGreater), 0).UTC()
+	}
+	if airingAtLesser != nil {
+		end = time.Unix(int64(*airingAtLesser), 0).UTC()
+	}
+	if end.Before(start) {
+		return end, start
+	}
+	return start, end
+}
+
+func simklCalendarMonthSpan(start time.Time, end time.Time) int {
+	if end.Before(start) {
+		start, end = end, start
+	}
+	return (end.Year()-start.Year())*12 + int(end.Month()-start.Month()) + 1
+}
+
+func simklCalendarItemTime(item simklapi.CalendarItem) (time.Time, bool) {
+	for _, value := range []string{item.Date, item.ReleaseDate} {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		for _, layout := range []string{time.RFC3339, "2006-01-02"} {
+			if parsed, err := time.Parse(layout, value); err == nil {
+				return parsed.UTC(), true
+			}
+		}
+	}
+	return time.Time{}, false
+}
+
+func sortCalendarAiringSchedules(schedules []*mediaapi.ListRecentAnime_Page_AiringSchedules, sorts []*mediaapi.AiringSort, airingAtLesser *int) {
+	desc := false
+	if len(sorts) == 0 && airingAtLesser != nil && *airingAtLesser <= int(time.Now().Unix()) {
+		desc = true
+	}
+	for _, sortValue := range sorts {
+		if sortValue == nil {
+			continue
+		}
+		switch *sortValue {
+		case mediaapi.AiringSortTimeDesc, mediaapi.AiringSortIDDesc, mediaapi.AiringSortMediaIDDesc, mediaapi.AiringSortEpisodeDesc:
+			desc = true
+		case mediaapi.AiringSortTime, mediaapi.AiringSortID, mediaapi.AiringSortMediaID, mediaapi.AiringSortEpisode:
+			desc = false
+		}
+		break
+	}
+	sort.Slice(schedules, func(i, j int) bool {
+		if schedules[i].AiringAt == schedules[j].AiringAt {
+			return schedules[i].ID < schedules[j].ID
+		}
+		if desc {
+			return schedules[i].AiringAt > schedules[j].AiringAt
+		}
+		return schedules[i].AiringAt < schedules[j].AiringAt
+	})
+}
+
+func paginateAiringSchedules(schedules []*mediaapi.ListRecentAnime_Page_AiringSchedules, page int, perPage int) ([]*mediaapi.ListRecentAnime_Page_AiringSchedules, *mediaapi.ListRecentAnime_Page_PageInfo) {
+	if page < 1 {
+		page = 1
+	}
+	if perPage < 1 {
+		perPage = 20
+	}
+
+	total := len(schedules)
+	lastPage := 1
+	if total > 0 {
+		lastPage = (total + perPage - 1) / perPage
+	}
+	start := (page - 1) * perPage
+	if start > total {
+		start = total
+	}
+	end := start + perPage
+	if end > total {
+		end = total
+	}
+
+	hasNextPage := end < total
+	return schedules[start:end], &mediaapi.ListRecentAnime_Page_PageInfo{
+		CurrentPage: &page,
+		HasNextPage: &hasNextPage,
+		LastPage:    &lastPage,
+		PerPage:     &perPage,
+		Total:       &total,
 	}
 }
 

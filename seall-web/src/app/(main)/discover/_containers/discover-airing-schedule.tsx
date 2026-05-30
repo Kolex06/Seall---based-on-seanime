@@ -1,4 +1,4 @@
-import { useListRecentAiringMedia } from "@/api/hooks/simkl.hooks"
+import { useGetMediaCollectionSchedule } from "@/api/hooks/media_library.hooks"
 import { SeaContextMenu } from "@/app/(main)/_features/context-menu/sea-context-menu"
 import { useMediaPreviewModal } from "@/app/(main)/_features/media/_containers/media-preview-modal"
 import { SeaImage } from "@/components/shared/sea-image"
@@ -7,7 +7,7 @@ import { ContextMenuGroup, ContextMenuItem, ContextMenuLabel, ContextMenuTrigger
 import { LoadingSpinner } from "@/components/ui/loading-spinner"
 import { Separator } from "@/components/ui/separator"
 import { useRouter } from "@/lib/navigation"
-import { format, isSameMonth, isToday, subDays } from "date-fns"
+import { format, isSameMonth, isToday, startOfDay } from "date-fns"
 import { addDays } from "date-fns/addDays"
 import { isSameDay } from "date-fns/isSameDay"
 import React from "react"
@@ -15,61 +15,38 @@ import { LuDock, LuEye } from "react-icons/lu"
 
 
 export function DiscoverAiringSchedule() {
-    const { data, isLoading } = useListRecentAiringMedia({
-        page: 1,
-        perPage: 50,
-        airingAt_lesser: Math.floor(addDays(new Date(), 14).getTime() / 1000),
-        airingAt_greater: Math.floor(subDays(new Date(), 2).getTime() / 1000),
-        notYetAired: true,
-        sort: ["TIME"],
-    })
-    const { data: data2, isLoading: isLoading2 } = useListRecentAiringMedia({
-        page: 2,
-        perPage: 50,
-        airingAt_lesser: Math.floor(addDays(new Date(), 14).getTime() / 1000),
-        airingAt_greater: Math.floor(subDays(new Date(), 2).getTime() / 1000),
-        notYetAired: true,
-        sort: ["TIME"],
-    })
+    const { data, isLoading } = useGetMediaCollectionSchedule({ source: "all" })
+    const scheduleStart = React.useMemo(() => startOfDay(new Date()), [])
+    const scheduleEnd = React.useMemo(() => addDays(scheduleStart, 14), [scheduleStart])
 
-    const media = React.useMemo(() => [...(data?.Page?.airingSchedules?.filter(item => item?.media?.isAdult === false
-        && item?.media?.type === "ANIME"
-        && item?.media?.countryOfOrigin === "JP"
-        && item?.media?.format !== "TV_SHORT",
-    ).filter(Boolean) || []),
-        ...(data2?.Page?.airingSchedules?.filter(item => item?.media?.isAdult === false
-            && item?.media?.type === "ANIME"
-            && item?.media?.countryOfOrigin === "JP"
-            && item?.media?.format !== "TV_SHORT",
-        ).filter(Boolean) || []),
-    ], [isLoading, isLoading2])
+    const media = React.useMemo(() => (data ?? []).filter(item => {
+        if (!item?.dateTime) return false
+        const dateTime = new Date(item.dateTime)
+        return dateTime >= scheduleStart && dateTime <= scheduleEnd
+    }), [data, scheduleEnd, scheduleStart])
 
     const router = useRouter()
     const { setPreviewModalMediaId } = useMediaPreviewModal()
 
-    // State for the current displayed month
-    const [currentDate, setCurrentDate] = React.useState(new Date())
+    const currentDate = scheduleStart
 
     const days = React.useMemo(() => {
 
-        // Ensure startOfWeek aligns with the correct day
-        const start = subDays(new Date(), 1)
-
         const daysArray = []
-        let day = new Date(start.setHours(0, 0, 0, 0))  // Ensure the day starts at midnight
-        const endDate = addDays(day, 14)  // 14-day range from the current start
+        let day = scheduleStart
 
-        while (day <= endDate) {
-            const upcomingMedia = media.filter((item) => !!item?.airingAt && isSameDay(new Date(item.airingAt * 1000), day)).map((item) => {
-                if (item.media?.id === 162804) console.log(item.airingAt)
+        while (day <= scheduleEnd) {
+            const upcomingMedia = media.filter((item) => !!item?.dateTime && isSameDay(new Date(item.dateTime), day)).map((item) => {
                 return {
-                    id: item.id + item?.episode!,
-                    name: item.media?.title?.userPreferred,
-                    time: format(new Date(item?.airingAt! * 1000), "h:mm a"),
-                    datetime: format(new Date(item?.airingAt! * 1000), "yyyy-MM-dd'T'HH:mm"),
-                    href: `/entry?id=${item.id}`,
-                    media: item.media,
-                    episode: item?.media?.nextAiringEpisode?.episode || 1,
+                    id: `${item.mediaId}-${item.episodeNumber}-${item.dateTime}`,
+                    mediaId: item.mediaId,
+                    name: item.title,
+                    time: format(new Date(item.dateTime!), "h:mm a"),
+                    datetime: format(new Date(item.dateTime!), "yyyy-MM-dd'T'HH:mm"),
+                    href: `/entry?id=${item.mediaId}`,
+                    image: item.image,
+                    episode: item.episodeNumber || 1,
+                    isMovie: item.isMovie,
                 }
             })
 
@@ -83,11 +60,11 @@ export function DiscoverAiringSchedule() {
             day = addDays(day, 1)
         }
         return daysArray
-    }, [media, currentDate])
+    }, [media, currentDate, scheduleEnd, scheduleStart])
 
-    if (isLoading || isLoading2) return <LoadingSpinner />
+    if (isLoading) return <LoadingSpinner />
 
-    if (!data?.Page?.airingSchedules?.length) return null
+    if (!media.length) return null
 
     return (
         <div className="space-y-4 z-[5] relative" data-discover-airing-schedule-container>
@@ -109,18 +86,18 @@ export function DiscoverAiringSchedule() {
                                                 <SeaContextMenu
                                                     content={<ContextMenuGroup>
                                                         <ContextMenuLabel className="text-[--muted] line-clamp-2 py-0 my-2">
-                                                            {event.media?.title?.userPreferred}
+                                                            {event.name}
                                                         </ContextMenuLabel>
                                                         <ContextMenuItem
                                                             onClick={() => {
-                                                                setPreviewModalMediaId(event.media?.id || 0, "anime")
+                                                                setPreviewModalMediaId(event.mediaId || 0, "anime")
                                                             }}
                                                         >
                                                             <LuEye /> Preview
                                                         </ContextMenuItem>
                                                         <ContextMenuItem
                                                             onClick={() => {
-                                                                router.push(`/entry?id=${event.media?.id}`)
+                                                                router.push(`/entry?id=${event.mediaId}`)
                                                             }}
                                                         >
                                                             <LuDock /> Open page
@@ -136,7 +113,7 @@ export function DiscoverAiringSchedule() {
                                                                 className="w-[5rem] h-[5rem] rounded-[--radius] flex-none object-cover object-center overflow-hidden relative"
                                                             >
                                                                 <SeaImage
-                                                                    src={event.media?.coverImage?.large || event.media?.bannerImage || "/no-cover.png"}
+                                                                    src={event.image || "/no-cover.png"}
                                                                     alt="banner"
                                                                     fill
                                                                     quality={80}
@@ -148,12 +125,12 @@ export function DiscoverAiringSchedule() {
 
                                                             <div className="space-y-1">
                                                                 <SeaLink
-                                                                    href={`/entry?id=${event.media?.id}`}
+                                                                    href={event.href}
                                                                     className="font-medium tracking-wide line-clamp-1"
-                                                                >{event.media?.title?.userPreferred}</SeaLink>
+                                                                >{event.name}</SeaLink>
 
                                                                 <p className="text-[--muted]">
-                                                                    Ep {event.episode} airing at {event.time}
+                                                                    {event.isMovie ? "Movie" : `Ep ${event.episode}`} at {event.time}
                                                                 </p>
                                                             </div>
                                                         </div>

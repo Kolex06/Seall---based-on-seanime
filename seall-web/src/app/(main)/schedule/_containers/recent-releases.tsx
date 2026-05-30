@@ -15,9 +15,8 @@ export function RecentReleases() {
         airingAt_greater: Math.floor(subDays(new Date(), 14).getTime() / 1000),
     })
 
-    const aired = data?.Page?.airingSchedules?.filter(item => item?.media?.isAdult === false
-        && item?.media?.type === "ANIME"
-        && item?.media?.countryOfOrigin === "JP"
+    const aired = data?.Page?.airingSchedules?.filter(item => item?.media
+        && item?.media?.isAdult !== true
         && item?.media?.format !== "TV_SHORT",
     ).filter(Boolean)
 

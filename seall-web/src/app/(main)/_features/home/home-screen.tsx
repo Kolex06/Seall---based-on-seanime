@@ -837,12 +837,15 @@ function GlobalMediaScheduleCalendar(props: { libraryCollectionProps: HandleLibr
         }
 
         return airingSchedules.map(schedule => {
+            const siteUrl = schedule.media?.siteUrl?.toLowerCase() ?? ""
+            const mediaType = schedule.media?.format === "MOVIE" ? "movies" : siteUrl.includes("/anime/") ? "anime" : "shows"
             const airDate = new Date((schedule.airingAt || 0) * 1000)
             const dateTimeStr = airDate.toISOString()
             const timeStr = `${airDate.getHours().toString().padStart(2, "0")}:${airDate.getMinutes().toString().padStart(2, "0")}`
             return {
                 mediaId: schedule.media!.id,
                 title: schedule.media!.title!.userPreferred!,
+                mediaType,
                 time: timeStr,
                 dateTime: dateTimeStr,
                 image: schedule.media?.bannerImage || schedule.media?.coverImage?.medium!,
