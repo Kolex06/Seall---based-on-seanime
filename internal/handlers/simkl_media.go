@@ -428,8 +428,9 @@ func (h *Handler) HandleDeleteMediaListEntry(c echo.Context) error {
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 var (
-	simklListAnimeCache       = result.NewCache[string, *mediaapi.ListAnime]()
-	simklListRecentAnimeCache = result.NewCache[string, *mediaapi.ListRecentAnime]() // holds 1 value
+	simklListAnimeCache            = result.NewCache[string, *mediaapi.ListAnime]()
+	simklListRecentAnimeCache      = result.NewCache[string, *mediaapi.ListRecentAnime]() // holds 1 value
+	simklDiscoveryMediaDetailCache = result.NewCache[string, simklapi.DiscoveryMedia]()
 )
 
 type listMediaRequest struct {
@@ -450,7 +451,7 @@ type listMediaRequest struct {
 
 // HandleListMedia
 //
-//	@summary returns a list of anime based on the search parameters.
+//	@summary returns a list of SIMKL media based on the search parameters.
 //	@desc This is used by the "Discover" and "Advanced Search".
 //	@route /api/v1/simkl/list-media [POST]
 //	@returns mediaapi.ListAnime
@@ -549,6 +550,9 @@ func (h *Handler) HandleListRecentAiringMedia(c echo.Context) error {
 
 func (h *Handler) listMediaViaSimklREST(ctx context.Context, request listMediaRequest) (*mediaapi.ListAnime, error) {
 	client := h.App.SimklClientRef.Get()
+	if client == nil {
+		return nil, errors.New("simkl discovery client is not available")
+	}
 	page := intValue(request.Page, 1)
 	perPage := intValue(request.PerPage, 20)
 	kinds := mediaKindsForFormat(request.Format)
@@ -562,18 +566,38 @@ func (h *Handler) listMediaViaSimklREST(ctx context.Context, request listMediaRe
 	if term == "" {
 		fetchLimit = maxInt(fetchLimit*4, 80)
 	}
-	for _, kind := range kinds {
-		var ret []simklapi.DiscoveryMedia
-		var err error
-		if term != "" {
-			ret, err = client.SearchMedia(ctx, kind, term)
-		} else {
-			ret, err = client.TrendingMedia(ctx, kind, 1, fetchLimit)
-		}
+	if term == "" && requestNeedsDiscoveryDetails(request) {
+		fetchLimit = maxInt(fetchLimit, 160)
+	}
+
+	if term == "" && request.Season != nil {
+		ret, err := h.listSeasonalDiscoveryMediaViaSimklREST(ctx, client, request, kinds, fetchLimit)
 		if err != nil {
 			return nil, err
 		}
 		items = append(items, ret...)
+	} else {
+		groups := make([][]simklapi.DiscoveryMedia, 0, len(kinds))
+		for _, kind := range kinds {
+			var ret []simklapi.DiscoveryMedia
+			var err error
+			if term != "" {
+				ret, err = client.SearchMedia(ctx, kind, term)
+			} else {
+				ret, err = client.TrendingMedia(ctx, kind, 1, fetchLimit)
+			}
+			if err != nil {
+				return nil, err
+			}
+			groups = append(groups, ret)
+		}
+		if term == "" && request.Format == nil {
+			items = append(items, interleaveDiscoveryMediaGroups(groups)...)
+		} else {
+			for _, group := range groups {
+				items = append(items, group...)
+			}
+		}
 	}
 	if term == "" && wantsUnreleasedStatus(request.Status) {
 		calendarItems, err := h.getSIMKLCalendarItemsPartial(ctx, time.Now(), kinds, calendarDiscoveryMonths(page, perPage))
@@ -586,12 +610,108 @@ func (h *Handler) listMediaViaSimklREST(ctx context.Context, request listMediaRe
 	}
 
 	items = dedupeDiscoveryMedia(items)
+	items = h.enrichDiscoveryMediaDetails(ctx, client, items, request)
+	items = dedupeDiscoveryMedia(items)
 	items = filterDiscoveryMedia(items, request)
-	if !sortDiscoveryMedia(items, request.Sort) && wantsUnreleasedStatus(request.Status) {
+	sorted := sortDiscoveryMedia(items, request.Sort)
+	if wantsUnreleasedStatus(request.Status) {
+		sortDiscoveryMediaByRelease(items, false)
+	} else if !sorted && request.Season != nil {
 		sortDiscoveryMediaByRelease(items, false)
 	}
 
 	return listAnimeFromDiscovery(items, page, perPage), nil
+}
+
+func interleaveDiscoveryMediaGroups(groups [][]simklapi.DiscoveryMedia) []simklapi.DiscoveryMedia {
+	total := 0
+	longest := 0
+	for _, group := range groups {
+		total += len(group)
+		if len(group) > longest {
+			longest = len(group)
+		}
+	}
+
+	ret := make([]simklapi.DiscoveryMedia, 0, total)
+	for i := 0; i < longest; i++ {
+		for _, group := range groups {
+			if i < len(group) {
+				ret = append(ret, group[i])
+			}
+		}
+	}
+	return ret
+}
+
+func (h *Handler) listSeasonalDiscoveryMediaViaSimklREST(
+	ctx context.Context,
+	client *simklapi.Client,
+	request listMediaRequest,
+	mediaTypes []simklapi.MediaType,
+	fetchLimit int,
+) ([]simklapi.DiscoveryMedia, error) {
+	start, monthCount, ok := simklSeasonCalendarWindow(request.Season, request.SeasonYear)
+	if !ok {
+		return nil, nil
+	}
+
+	ret := make([]simklapi.DiscoveryMedia, 0, fetchLimit*len(mediaTypes))
+	var firstErr error
+
+	// Put SIMKL trending seeds first so highly rated/popular seasonal entries keep their
+	// rating payload when the calendar copy is deduped later.
+	for _, mediaType := range mediaTypes {
+		items, err := client.TrendingMedia(ctx, mediaType, 1, maxInt(fetchLimit, 160))
+		if err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+		ret = append(ret, items...)
+	}
+
+	calendarItems, err := h.getSIMKLCalendarItemsPartial(ctx, start, mediaTypes, monthCount)
+	if err != nil {
+		if firstErr == nil {
+			firstErr = err
+		}
+	} else {
+		ret = append(ret, simklapi.DiscoveryMediaFromCalendarItems(calendarItems)...)
+	}
+
+	if len(ret) == 0 && firstErr != nil {
+		return nil, firstErr
+	}
+	return ret, nil
+}
+
+func simklSeasonCalendarWindow(season *mediaapi.MediaSeason, seasonYear *int) (time.Time, int, bool) {
+	if season == nil {
+		return time.Time{}, 0, false
+	}
+
+	year := time.Now().UTC().Year()
+	if seasonYear != nil && *seasonYear > 0 {
+		year = *seasonYear
+	}
+
+	var month time.Month
+	switch *season {
+	case mediaapi.MediaSeasonWinter:
+		month = time.January
+	case mediaapi.MediaSeasonSpring:
+		month = time.April
+	case mediaapi.MediaSeasonSummer:
+		month = time.July
+	case mediaapi.MediaSeasonFall:
+		month = time.October
+	default:
+		return time.Time{}, 0, false
+	}
+
+	return time.Date(year, month, 1, 0, 0, 0, 0, time.UTC), 3, true
 }
 
 func (h *Handler) getSIMKLCalendarItemsPartial(ctx context.Context, now time.Time, mediaTypes []simklapi.MediaType, monthCount int) ([]simklapi.CalendarItem, error) {
@@ -630,6 +750,311 @@ func (h *Handler) getSIMKLCalendarItemsPartial(ctx context.Context, now time.Tim
 		return nil, firstErr
 	}
 	return ret, nil
+}
+
+func (h *Handler) enrichDiscoveryMediaDetails(
+	ctx context.Context,
+	client *simklapi.Client,
+	items []simklapi.DiscoveryMedia,
+	request listMediaRequest,
+) []simklapi.DiscoveryMedia {
+	if client == nil || len(items) == 0 || !requestNeedsDiscoveryDetails(request) {
+		return items
+	}
+
+	limit := discoveryDetailLimit(request, len(items))
+	if limit <= 0 {
+		return items
+	}
+
+	workerCount := 8
+	if limit < workerCount {
+		workerCount = limit
+	}
+
+	jobs := make(chan int)
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+
+	for i := 0; i < workerCount; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for idx := range jobs {
+				detailed, ok := h.discoveryMediaDetails(ctx, client, items[idx])
+				if !ok {
+					continue
+				}
+				mu.Lock()
+				items[idx] = detailed
+				mu.Unlock()
+			}
+		}()
+	}
+
+	queued := 0
+	for i := range items {
+		if queued >= limit {
+			break
+		}
+		if !discoveryMediaNeedsDetails(items[i], request) {
+			continue
+		}
+		queued++
+		jobs <- i
+	}
+
+	close(jobs)
+	wg.Wait()
+
+	return items
+}
+
+func (h *Handler) discoveryMediaDetails(ctx context.Context, client *simklapi.Client, item simklapi.DiscoveryMedia) (simklapi.DiscoveryMedia, bool) {
+	id := item.Media.IDs.PrimarySimklID()
+	if id == 0 {
+		if media := simklapi.ToBaseAnime(item.Kind, &item.Media); media != nil {
+			id = media.GetID()
+		}
+	}
+	if id == 0 {
+		return simklapi.DiscoveryMedia{}, false
+	}
+
+	kind := simklapi.KindFromStandardMedia(item.Kind, &item.Media)
+	cacheKey := fmt.Sprintf("%s:%d", kind, id)
+	if cached, ok := simklDiscoveryMediaDetailCache.Get(cacheKey); ok {
+		cached.Media = mergeSIMKLStandardMedia(item.Media, cached.Media)
+		cached.Kind = simklapi.KindFromStandardMedia(cached.Kind, &cached.Media)
+		return cached, true
+	}
+
+	for _, candidate := range discoveryMediaDetailKindCandidates(kind) {
+		media, err := client.MediaDetails(ctx, candidate, strconv.Itoa(id), "full")
+		if err != nil || media == nil {
+			continue
+		}
+		if media.IDs.Simkl == 0 {
+			media.IDs.Simkl = id
+		}
+		if media.Type == "" {
+			media.Type = string(candidate)
+		}
+		merged := mergeSIMKLStandardMedia(item.Media, *media)
+		ret := simklapi.DiscoveryMedia{
+			Kind:  simklapi.KindFromStandardMedia(candidate, &merged),
+			Media: merged,
+		}
+		simklDiscoveryMediaDetailCache.SetT(cacheKey, ret, 24*time.Hour)
+		return ret, true
+	}
+
+	return simklapi.DiscoveryMedia{}, false
+}
+
+func requestNeedsDiscoveryDetails(request listMediaRequest) bool {
+	if request.Season != nil || request.AverageScoreGreater != nil {
+		return true
+	}
+	if len(simklGenreFilters(request.Genres, request.Tags)) > 0 {
+		return true
+	}
+	return hasScoreSort(request.Sort) || hasTrendingSort(request.Sort)
+}
+
+func discoveryMediaNeedsDetails(item simklapi.DiscoveryMedia, request listMediaRequest) bool {
+	if len(simklGenreFilters(request.Genres, request.Tags)) > 0 && len(item.Media.Genres) == 0 {
+		return true
+	}
+	if request.AverageScoreGreater != nil && item.Media.Ratings.Simkl == nil {
+		return true
+	}
+	if hasScoreSort(request.Sort) && item.Media.Ratings.Simkl == nil {
+		return true
+	}
+	if hasTrendingSort(request.Sort) {
+		return len(item.Media.Genres) == 0 || item.Media.Released == "" || item.Media.Status == ""
+	}
+	if request.Season != nil {
+		base := simklapi.ToBaseAnime(item.Kind, &item.Media)
+		if base == nil {
+			return false
+		}
+		month := base.GetStartDate().GetMonth()
+		return month == nil || *month == 0 || item.Media.Ratings.Simkl == nil
+	}
+	return false
+}
+
+func discoveryDetailLimit(request listMediaRequest, itemCount int) int {
+	limit := 120
+	if hasTrendingSort(request.Sort) && request.Season == nil && len(simklGenreFilters(request.Genres, request.Tags)) == 0 && request.AverageScoreGreater == nil {
+		limit = maxInt(intValue(request.PerPage, 20)*2, 40)
+	}
+	if request.Season != nil {
+		limit = 320
+	}
+	if len(simklGenreFilters(request.Genres, request.Tags)) > 0 {
+		limit = maxInt(limit, 220)
+	}
+	if limit > itemCount {
+		limit = itemCount
+	}
+	return limit
+}
+
+func hasScoreSort(sorts []*mediaapi.MediaSort) bool {
+	for _, sortValue := range sorts {
+		if sortValue == nil {
+			continue
+		}
+		sortKey := strings.ToUpper(string(*sortValue))
+		if strings.Contains(sortKey, "SCORE") {
+			return true
+		}
+	}
+	return false
+}
+
+func hasTrendingSort(sorts []*mediaapi.MediaSort) bool {
+	for _, sortValue := range sorts {
+		if sortValue == nil {
+			continue
+		}
+		sortKey := strings.ToUpper(string(*sortValue))
+		if strings.Contains(sortKey, "TRENDING") || strings.Contains(sortKey, "POPULARITY") {
+			return true
+		}
+	}
+	return false
+}
+
+func discoveryMediaDetailKindCandidates(kind simklapi.MediaType) []simklapi.MediaType {
+	ret := make([]simklapi.MediaType, 0, 3)
+	add := func(candidate simklapi.MediaType) {
+		if candidate != simklapi.MediaTypeMovies && candidate != simklapi.MediaTypeShows && candidate != simklapi.MediaTypeAnime {
+			return
+		}
+		for _, existing := range ret {
+			if existing == candidate {
+				return
+			}
+		}
+		ret = append(ret, candidate)
+	}
+
+	add(kind)
+	add(simklapi.MediaTypeMovies)
+	add(simklapi.MediaTypeShows)
+	add(simklapi.MediaTypeAnime)
+	return ret
+}
+
+func mergeSIMKLStandardMedia(fallback simklapi.StandardMedia, detailed simklapi.StandardMedia) simklapi.StandardMedia {
+	if detailed.Title == "" {
+		detailed.Title = fallback.Title
+	}
+	if detailed.Year == 0 {
+		detailed.Year = fallback.Year
+	}
+	if detailed.Type == "" {
+		detailed.Type = fallback.Type
+	}
+	if detailed.Status == "" {
+		detailed.Status = fallback.Status
+	}
+	if detailed.Rating == nil {
+		detailed.Rating = fallback.Rating
+	}
+	if detailed.AddedAt == "" {
+		detailed.AddedAt = fallback.AddedAt
+	}
+	if detailed.WatchedAt == "" {
+		detailed.WatchedAt = fallback.WatchedAt
+	}
+	if detailed.Poster == "" {
+		detailed.Poster = fallback.Poster
+	}
+	if detailed.Fanart == "" {
+		detailed.Fanart = fallback.Fanart
+	}
+	if detailed.URL == "" {
+		detailed.URL = fallback.URL
+	}
+	if detailed.Runtime == nil {
+		detailed.Runtime = fallback.Runtime
+	}
+	if detailed.Overview == "" {
+		detailed.Overview = fallback.Overview
+	}
+	if len(detailed.Genres) == 0 {
+		detailed.Genres = fallback.Genres
+	}
+	if detailed.Country == "" {
+		detailed.Country = fallback.Country
+	}
+	if detailed.Released == "" {
+		detailed.Released = fallback.Released
+	}
+	if detailed.TotalEpisodes == nil {
+		detailed.TotalEpisodes = fallback.TotalEpisodes
+	}
+	if detailed.AnimeType == "" {
+		detailed.AnimeType = fallback.AnimeType
+	}
+	if detailed.EnglishName == "" {
+		detailed.EnglishName = fallback.EnglishName
+	}
+	detailed.IDs = mergeSIMKLIDs(fallback.IDs, detailed.IDs)
+	detailed.Ratings = mergeSIMKLRatings(fallback.Ratings, detailed.Ratings)
+	return detailed
+}
+
+func mergeSIMKLIDs(fallback simklapi.IDs, detailed simklapi.IDs) simklapi.IDs {
+	if detailed.Simkl == 0 {
+		detailed.Simkl = fallback.Simkl
+	}
+	if detailed.SimklID == 0 {
+		detailed.SimklID = fallback.SimklID
+	}
+	if detailed.Slug == "" {
+		detailed.Slug = fallback.Slug
+	}
+	if detailed.IMDB == "" {
+		detailed.IMDB = fallback.IMDB
+	}
+	if detailed.TMDB == "" {
+		detailed.TMDB = fallback.TMDB
+	}
+	if detailed.TVDB == "" {
+		detailed.TVDB = fallback.TVDB
+	}
+	if detailed.MAL == "" {
+		detailed.MAL = fallback.MAL
+	}
+	if detailed.AniDB == "" {
+		detailed.AniDB = fallback.AniDB
+	}
+	if detailed.Kitsu == "" {
+		detailed.Kitsu = fallback.Kitsu
+	}
+	if detailed.Crunchyroll == "" {
+		detailed.Crunchyroll = fallback.Crunchyroll
+	}
+	return detailed
+}
+
+func mergeSIMKLRatings(fallback simklapi.Ratings, detailed simklapi.Ratings) simklapi.Ratings {
+	if detailed.Simkl == nil {
+		detailed.Simkl = fallback.Simkl
+	}
+	if detailed.IMDB == nil {
+		detailed.IMDB = fallback.IMDB
+	}
+	if detailed.MAL == nil {
+		detailed.MAL = fallback.MAL
+	}
+	return detailed
 }
 
 func (h *Handler) listRecentAiringMediaViaSimklREST(
@@ -1039,7 +1464,7 @@ func matchesMediaSeason(media *mediaapi.BaseAnime, season *mediaapi.MediaSeason)
 	}
 	month := media.GetStartDate().GetMonth()
 	if month == nil || *month == 0 {
-		return true
+		return false
 	}
 	switch *season {
 	case mediaapi.MediaSeasonWinter:
@@ -1061,7 +1486,7 @@ func matchesGenres(mediaGenres []string, wanted []*string) bool {
 	}
 	genreSet := make(map[string]struct{}, len(mediaGenres))
 	for _, genre := range mediaGenres {
-		genre = strings.ToLower(strings.TrimSpace(genre))
+		genre = normalizedSIMKLGenre(genre)
 		if genre != "" {
 			genreSet[genre] = struct{}{}
 		}
@@ -1070,11 +1495,29 @@ func matchesGenres(mediaGenres []string, wanted []*string) bool {
 		if wantedGenre == nil || strings.TrimSpace(*wantedGenre) == "" {
 			continue
 		}
-		if _, ok := genreSet[strings.ToLower(strings.TrimSpace(*wantedGenre))]; !ok {
+		if _, ok := genreSet[normalizedSIMKLGenre(*wantedGenre)]; !ok {
 			return false
 		}
 	}
 	return true
+}
+
+func normalizedSIMKLGenre(genre string) string {
+	genre = strings.ToLower(strings.TrimSpace(genre))
+	genre = strings.ReplaceAll(genre, "-", " ")
+	genre = strings.Join(strings.Fields(genre), " ")
+	switch genre {
+	case "science fiction", "sciencefiction", "sci fi":
+		return "sci fi"
+	case "sports":
+		return "sport"
+	case "talkshow":
+		return "talk show"
+	case "historical":
+		return "history"
+	default:
+		return genre
+	}
 }
 
 func matchesAverageScore(rating *simklapi.Rating, threshold *int) bool {

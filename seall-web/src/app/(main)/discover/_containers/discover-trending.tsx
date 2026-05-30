@@ -4,7 +4,7 @@ import { MediaEntryCardSkeleton } from "@/app/(main)/_features/media/_components
 import { MediaGenreSelector } from "@/app/(main)/_features/media/_components/media-genre-selector"
 import { __discover_clickedCarouselDotAtom, __discover_hoveringHeaderAtom } from "@/app/(main)/discover/_components/discover-page-header"
 import { __discover_trendingGenresAtom, useDiscoverTrendingAnime } from "@/app/(main)/discover/_lib/handle-discover-queries"
-import { ADVANCED_SEARCH_MEDIA_GENRES } from "@/app/(main)/search/_lib/advanced-search-constants"
+import { SIMKL_DISCOVER_GENRES } from "@/app/(main)/discover/_lib/simkl-discover-genres"
 import { Carousel, CarouselContent, CarouselDotButtons } from "@/components/ui/carousel"
 import { atom } from "jotai"
 import { useAtom, useAtomValue, useSetAtom } from "jotai/react"
@@ -143,7 +143,7 @@ function GenreSelector(props: GenreSelectorProps) {
                     isCurrent: selectedGenre.length === 0,
                     onClick: () => setSelectedGenre([]),
                 },
-                ...ADVANCED_SEARCH_MEDIA_GENRES.map(genre => ({
+                ...SIMKL_DISCOVER_GENRES.map(genre => ({
                     name: genre,
                     isCurrent: selectedGenre.includes(genre),
                     onClick: () => setSelectedGenre([genre]),

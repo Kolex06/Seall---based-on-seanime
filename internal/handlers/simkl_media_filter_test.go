@@ -81,6 +81,75 @@ func TestSortDiscoveryMediaBySIMKLScore(t *testing.T) {
 	}
 }
 
+func TestFilterDiscoveryMediaRequiresKnownSeasonMonth(t *testing.T) {
+	season := mediaapi.MediaSeasonSpring
+	year := 2026
+	items := []simklapi.DiscoveryMedia{
+		{
+			Kind: simklapi.MediaTypeMovies,
+			Media: simklapi.StandardMedia{
+				Title:    "Spring Movie",
+				Year:     year,
+				Released: "2026-04-10",
+				IDs:      simklapi.IDs{Simkl: 1},
+			},
+		},
+		{
+			Kind: simklapi.MediaTypeMovies,
+			Media: simklapi.StandardMedia{
+				Title: "Year Only Movie",
+				Year:  year,
+				IDs:   simklapi.IDs{Simkl: 2},
+			},
+		},
+	}
+
+	filtered := filterDiscoveryMedia(items, listMediaRequest{
+		Season:     &season,
+		SeasonYear: &year,
+	})
+
+	if len(filtered) != 1 {
+		t.Fatalf("expected only the dated spring item, got %d", len(filtered))
+	}
+	if filtered[0].Media.Title != "Spring Movie" {
+		t.Fatalf("expected Spring Movie, got %q", filtered[0].Media.Title)
+	}
+}
+
+func TestMatchesGenresNormalizesSIMKLAliases(t *testing.T) {
+	wantedSciFi := "Science Fiction"
+	wantedSports := "Sports"
+
+	if !matchesGenres([]string{"Sci-Fi", "Sport"}, []*string{&wantedSciFi, &wantedSports}) {
+		t.Fatalf("expected SIMKL genre aliases to match discover genre filters")
+	}
+}
+
+func TestInterleaveDiscoveryMediaGroups(t *testing.T) {
+	groups := [][]simklapi.DiscoveryMedia{
+		{
+			{Kind: simklapi.MediaTypeMovies, Media: simklapi.StandardMedia{Title: "Movie 1"}},
+			{Kind: simklapi.MediaTypeMovies, Media: simklapi.StandardMedia{Title: "Movie 2"}},
+		},
+		{
+			{Kind: simklapi.MediaTypeShows, Media: simklapi.StandardMedia{Title: "Show 1"}},
+		},
+		{
+			{Kind: simklapi.MediaTypeAnime, Media: simklapi.StandardMedia{Title: "Anime 1"}},
+		},
+	}
+
+	ret := interleaveDiscoveryMediaGroups(groups)
+	titles := []string{ret[0].Media.Title, ret[1].Media.Title, ret[2].Media.Title, ret[3].Media.Title}
+	expected := []string{"Movie 1", "Show 1", "Anime 1", "Movie 2"}
+	for i := range expected {
+		if titles[i] != expected[i] {
+			t.Fatalf("expected %v, got %v", expected, titles)
+		}
+	}
+}
+
 func TestListRecentAnimeFromCalendarItemsUsesSIMKLCalendarDates(t *testing.T) {
 	sortTime := mediaapi.AiringSortTime
 	greater := int(time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC).Add(-time.Second).Unix())

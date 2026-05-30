@@ -8,7 +8,7 @@ import {
     useDiscoverPastSeasonAnime,
     useDiscoverPopularAnime,
 } from "@/app/(main)/discover/_lib/handle-discover-queries"
-import { ADVANCED_SEARCH_MEDIA_GENRES } from "@/app/(main)/search/_lib/advanced-search-constants"
+import { SIMKL_DISCOVER_GENRES } from "@/app/(main)/discover/_lib/simkl-discover-genres"
 import { Carousel, CarouselContent, CarouselDotButtons } from "@/components/ui/carousel"
 import { useAtom } from "jotai/react"
 import React from "react"
@@ -73,7 +73,7 @@ export function DiscoverThisSeason() {
                         isCurrent: selectedGenre.length === 0,
                         onClick: () => setSelectedGenre([]),
                     },
-                    ...ADVANCED_SEARCH_MEDIA_GENRES.map(genre => ({
+                    ...SIMKL_DISCOVER_GENRES.map(genre => ({
                         name: genre,
                         isCurrent: selectedGenre.includes(genre),
                         onClick: () => setSelectedGenre([genre]),
@@ -125,7 +125,7 @@ export function DiscoverPastSeason() {
                         isCurrent: selectedGenre.length === 0,
                         onClick: () => setSelectedGenre([]),
                     },
-                    ...ADVANCED_SEARCH_MEDIA_GENRES.map(genre => ({
+                    ...SIMKL_DISCOVER_GENRES.map(genre => ({
                         name: genre,
                         isCurrent: selectedGenre.includes(genre),
                         onClick: () => setSelectedGenre([genre]),
