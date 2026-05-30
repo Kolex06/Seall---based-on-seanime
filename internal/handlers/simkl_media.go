@@ -70,6 +70,20 @@ func (h *Handler) HandleGetRawMediaCollection(c echo.Context) error {
 
 var tagsCache *mediaapi.MediaTagMap
 
+func isCollectionTagsAuthError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, mediaapi.ErrNotAuthenticated) {
+		return true
+	}
+
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "not authenticated") ||
+		strings.Contains(msg, "unauthorized") ||
+		strings.Contains(msg, "invalid token")
+}
+
 // HandleGetRawMediaCollectionTags
 //
 //	@summary returns the SIMKL tags for the user's raw anime collection.
@@ -92,6 +106,11 @@ func (h *Handler) HandleGetRawMediaCollectionTags(c echo.Context) error {
 
 	ret, err := h.App.MediaPlatformRef.Get().GetMediaApiClient().AnimeCollectionTags(c.Request().Context(), &userName)
 	if err != nil {
+		if isCollectionTagsAuthError(err) {
+			tags := mediaapi.MediaTagMap{}
+			tagsCache = &tags
+			return h.RespondWithData(c, tags)
+		}
 		return h.RespondWithError(c, err)
 	}
 

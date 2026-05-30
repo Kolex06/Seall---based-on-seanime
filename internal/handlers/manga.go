@@ -89,6 +89,11 @@ func (h *Handler) HandleGetRawMangaCollectionTags(c echo.Context) error {
 
 	ret, err := h.App.MediaPlatformRef.Get().GetMediaApiClient().MangaCollectionTags(c.Request().Context(), &userName)
 	if err != nil {
+		if isCollectionTagsAuthError(err) {
+			tags := mediaapi.MediaTagMap{}
+			mangaTagsCache = &tags
+			return h.RespondWithData(c, tags)
+		}
 		return h.RespondWithError(c, err)
 	}
 
