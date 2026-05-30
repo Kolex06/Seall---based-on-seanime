@@ -2,7 +2,6 @@ import { useServerStatus } from "@/app/(main)/_hooks/use-server-status"
 import {
     ADVANCED_SEARCH_FORMATS,
     ADVANCED_SEARCH_MEDIA_GENRES,
-    ADVANCED_SEARCH_MEDIA_TAGS,
     ADVANCED_SEARCH_SEASONS,
     ADVANCED_SEARCH_SORTING,
     ADVANCED_SEARCH_STATUS,
@@ -26,7 +25,7 @@ import { FiSearch } from "react-icons/fi"
 import { LuCalendar, LuLeaf } from "react-icons/lu"
 import { MdPersonalVideo } from "react-icons/md"
 import { RiSignalTowerLine } from "react-icons/ri"
-import { TbSwords, TbTagsFilled } from "react-icons/tb"
+import { TbSwords } from "react-icons/tb"
 import { useMount } from "react-use"
 import { useUpdateEffect } from "react-use"
 
@@ -79,7 +78,7 @@ export function AdvancedSearchOptions() {
                     multiple
                     leftAddon={<TbSwords className={cn((params.genre !== null && !!params.genre.length) && "text-indigo-300 font-bold text-xl")} />}
                     emptyMessage="No options found"
-                    label="Genre" placeholder="All genres" className="w-full"
+                    label="SIMKL Genre" placeholder="All SIMKL genres" className="w-full"
                     options={ADVANCED_SEARCH_MEDIA_GENRES.map(genre => ({ value: genre, label: genre, textValue: genre }))}
                     value={params.genre ? params.genre : []}
                     onValueChange={v => setParams(draft => {
@@ -87,27 +86,7 @@ export function AdvancedSearchOptions() {
                         return
                     })}
                     fieldLabelClass="hidden"
-                />
-                <Combobox
-                    multiple
-                    leftAddon={<TbTagsFilled className={cn((params.tags !== null && !!params.tags.length) && "text-indigo-300 font-bold text-xl")} />}
-                    emptyMessage="No options found"
-                    label="SIMKL Genres" placeholder="All SIMKL genres" className="w-full"
-                    options={ADVANCED_SEARCH_MEDIA_TAGS
-                        .filter(tag => {
-                            if (params.isAdult && serverStatus?.settings?.simkl?.enableAdultContent) {
-                                return true
-                            }
-                            return tag.isAdult === false
-                        })
-                        .map(tag => ({ value: tag.name, label: tag.name, textValue: tag.name }))}
-                    value={params.tags ? params.tags : []}
-                    onValueChange={v => setParams(draft => {
-                        draft.tags = v
-                        return
-                    })}
-                    fieldLabelClass="hidden"
-                    data-advanced-search-options-tags
+                    data-advanced-search-options-genre
                 />
                 <Select
                     leftAddon={<MdPersonalVideo className={cn((params.format !== null && !!params.format) && "text-indigo-300 font-bold text-xl")} />}

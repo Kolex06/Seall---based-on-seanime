@@ -115,11 +115,3 @@ export const ADVANCED_SEARCH_SORTING_MANGA = [
 export const ADVANCED_SEARCH_TYPE = [
     { value: "anime", label: "Media" },
 ]
-
-export const ADVANCED_SEARCH_MEDIA_TAGS = ADVANCED_SEARCH_MEDIA_GENRES.map((name, id) => ({
-    id,
-    name,
-    description: `SIMKL genre: ${name}`,
-    category: "SIMKL Genre",
-    isAdult: false,
-}))

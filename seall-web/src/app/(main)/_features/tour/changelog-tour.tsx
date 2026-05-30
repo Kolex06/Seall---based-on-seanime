@@ -163,9 +163,9 @@ function useSetupTour(): Record<string, () => TourStep[]> {
             },
             {
                 id: "search",
-                target: "[data-advanced-search-options-tags='true']",
-                title: "Tags",
-                content: "The search page now supports searching by tags.",
+                target: "[data-advanced-search-options-genre='true']",
+                title: "SIMKL Genres",
+                content: "The search page supports filtering by SIMKL genres.",
                 route: "/search",
                 advanceOnTargetClick: false,
                 ignoreOutsideClick: true,

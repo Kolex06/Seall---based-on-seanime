@@ -21,7 +21,6 @@ import { PageWrapper } from "@/components/shared/page-wrapper"
 import { AppLayoutStack } from "@/components/ui/app-layout"
 import { IconButton } from "@/components/ui/button"
 import { Carousel, CarouselContent, CarouselDotButtons } from "@/components/ui/carousel"
-import { Combobox } from "@/components/ui/combobox"
 import { cn } from "@/components/ui/core/styling"
 import { LoadingSpinner } from "@/components/ui/loading-spinner"
 import { Select } from "@/components/ui/select"
@@ -40,7 +39,7 @@ import { AiOutlineArrowLeft } from "react-icons/ai"
 import { BiTrash } from "react-icons/bi"
 import { FaSortAmountDown } from "react-icons/fa"
 import { FiSearch } from "react-icons/fi"
-import { LuCalendar, LuLeaf, LuTags } from "react-icons/lu"
+import { LuCalendar, LuLeaf } from "react-icons/lu"
 import { MdPersonalVideo } from "react-icons/md"
 import { RiSignalTowerLine } from "react-icons/ri"
 
@@ -152,7 +151,7 @@ export function DetailedLibraryView(props: LibraryViewProps) {
                 </div>
             </div>}
 
-            <SearchOptions libraryGenres={libraryGenres} />
+            <SearchOptions />
 
             <GenreSelector genres={libraryGenres} />
 
@@ -286,7 +285,7 @@ const SearchInput = () => {
     )
 }
 
-export function SearchOptions({ libraryGenres }: { libraryGenres: string[] }) {
+export function SearchOptions() {
 
     const serverStatus = useServerStatus()
     const [params, setParams] = useAtom(__library_paramsAtom)
@@ -310,7 +309,7 @@ export function SearchOptions({ libraryGenres }: { libraryGenres: string[] }) {
                 />
             </div>
             <div
-                className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-[1fr_1fr_1fr_1fr_1fr_1fr_auto_auto] gap-4 items-start"
+                className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-[1fr_1fr_1fr_1fr_1fr_auto_auto] gap-4 items-start"
                 data-detailed-library-view-search-options-grid
             >
                 <Select
@@ -354,23 +353,6 @@ export function SearchOptions({ libraryGenres }: { libraryGenres: string[] }) {
                     value={params.status || ""}
                     onValueChange={v => setParams(draft => {
                         draft.status = v as any
-                        return
-                    })}
-                    fieldLabelClass="hidden"
-                />
-                <Combobox
-                    multiple
-                    leftAddon={!params.tags &&
-                        <LuTags />}
-                    emptyMessage="No options found"
-                    label="SIMKL Genres"
-                    placeholder="All SIMKL genres"
-                    className="w-full"
-                    fieldClass="w-full"
-                    options={libraryGenres.map(genre => ({ value: genre, label: genre, textValue: genre }))}
-                    value={params.tags ? params.tags : []}
-                    onValueChange={v => setParams(draft => {
-                        draft.tags = v
                         return
                     })}
                     fieldLabelClass="hidden"

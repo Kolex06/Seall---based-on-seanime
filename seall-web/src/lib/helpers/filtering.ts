@@ -160,15 +160,35 @@ export const DEFAULT_MANGA_COLLECTION_PARAMS: CollectionParams<"manga"> = {
     unreadOnly: false,
 }
 
+function normalizeGenre(value: string | null | undefined) {
+    const normalized = value?.trim().toLowerCase()
+    return normalized || null
+}
+
 function includesGenre(genres: Array<string | null | undefined>, wanted: string) {
-    const normalWanted = wanted.trim().toLowerCase()
-    return genres.some(genre => genre?.trim().toLowerCase() === normalWanted)
+    const normalWanted = normalizeGenre(wanted)
+    if (!normalWanted) return false
+    return genres.some(genre => normalizeGenre(genre) === normalWanted)
 }
 
 function entryGenres(media: { id?: number | null, genres?: Array<string | null> | null } | null | undefined, mediaTagMap?: Record<number, Array<string>> | null) {
     const directGenres = media?.genres ?? []
     const simklGenreTags = media?.id ? (mediaTagMap?.[media.id] ?? []) : []
     return [...directGenres, ...simklGenreTags]
+}
+
+function combinedGenreFilters<V extends CollectionType>(params: CollectionParams<V>) {
+    return [...(params.genre ?? []), ...(params.tags ?? [])]
+        .filter((genre): genre is string => !!normalizeGenre(genre))
+}
+
+function matchesAllGenreFilters(
+    media: { id?: number | null, genres?: Array<string | null> | null } | null | undefined,
+    mediaTagMap: Record<number, Array<string>> | null | undefined,
+    genreFilters: string[],
+) {
+    const genres = entryGenres(media, mediaTagMap)
+    return genreFilters.every(genre => includesGenre(genres, genre))
 }
 
 
@@ -227,21 +247,10 @@ export function filterListEntries<T extends MediaAPI_MangaCollection_MediaListCo
         ((n.media as MediaAPI_BaseMedia)?.seasonYear === Number(params.year) || n.media?.startDate?.year === Number(params.year))
         : n.media?.startDate?.year === Number(params.year))
 
-    // Filter by genre
-    if (!!arr && !!params.genre?.length) {
-        arr = arr.filter(n => {
-            const genres = entryGenres(n.media, mediaTagMap)
-            return params.genre?.every(genre => includesGenre(genres, genre))
-        })
-    }
-
-    if (!!arr && !!params.tags?.length && !!mediaTagMap) {
-        arr = arr.filter(n => {
-            const mediaId = n.media?.id
-            const tags = mediaId ? (mediaTagMap[mediaId] ?? []) : []
-
-            return params.tags?.every(tag => tags.includes(tag))
-        })
+    // SIMKL genres used to arrive through both genre and tags params. Keep both working with one matcher.
+    const genreFilters = combinedGenreFilters(params)
+    if (!!arr && !!genreFilters.length) {
+        arr = arr.filter(n => matchesAllGenreFilters(n.media, mediaTagMap, genreFilters))
     }
 
     // Initial sort by name
@@ -330,21 +339,10 @@ export function filterCollectionEntries<T extends Media_LibraryCollectionEntry[]
     // Filter by year
     if (!!arr && !!params.year) arr = arr.filter(n => n.media?.seasonYear === Number(params.year) || n.media?.startDate?.year === Number(params.year))
 
-    // Filter by genre
-    if (!!arr && !!params.genre?.length) {
-        arr = arr.filter(n => {
-            const genres = entryGenres(n.media, mediaTagMap)
-            return params.genre?.every(genre => includesGenre(genres, genre))
-        })
-    }
-
-    if (!!arr && !!params.tags?.length && !!mediaTagMap) {
-        arr = arr.filter(n => {
-            const mediaId = n.media?.id
-            const tags = mediaId ? (mediaTagMap[mediaId] ?? []) : []
-
-            return params.tags?.every(tag => tags.includes(tag))
-        })
+    // SIMKL genres used to arrive through both genre and tags params. Keep both working with one matcher.
+    const genreFilters = combinedGenreFilters(params)
+    if (!!arr && !!genreFilters.length) {
+        arr = arr.filter(n => matchesAllGenreFilters(n.media, mediaTagMap, genreFilters))
     }
 
     // Initial sort by name
