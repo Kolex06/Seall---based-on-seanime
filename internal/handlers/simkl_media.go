@@ -619,6 +619,9 @@ func (h *Handler) listMediaViaSimklREST(ctx context.Context, request listMediaRe
 	} else if !sorted && request.Season != nil {
 		sortDiscoveryMediaByRelease(items, false)
 	}
+	if shouldBalanceDiscoveryKinds(term, request) {
+		items = balanceDiscoveryMediaKinds(items)
+	}
 
 	return listAnimeFromDiscovery(items, page, perPage), nil
 }
@@ -642,6 +645,75 @@ func interleaveDiscoveryMediaGroups(groups [][]simklapi.DiscoveryMedia) []simkla
 		}
 	}
 	return ret
+}
+
+func shouldBalanceDiscoveryKinds(search string, request listMediaRequest) bool {
+	if strings.TrimSpace(search) != "" {
+		return false
+	}
+	if request.Format == nil {
+		return true
+	}
+	return *request.Format == mediaapi.MediaFormatTv || *request.Format == mediaapi.MediaFormatTvShort
+}
+
+func balanceDiscoveryMediaKinds(items []simklapi.DiscoveryMedia) []simklapi.DiscoveryMedia {
+	if len(items) == 0 {
+		return items
+	}
+
+	groupOrder := []simklapi.MediaType{
+		simklapi.MediaTypeMovies,
+		simklapi.MediaTypeShows,
+		simklapi.MediaTypeAnime,
+	}
+	groups := map[simklapi.MediaType][]simklapi.DiscoveryMedia{}
+	other := make([]simklapi.DiscoveryMedia, 0)
+
+	for _, item := range items {
+		kind := simklapi.KindFromStandardMedia(item.Kind, &item.Media)
+		switch kind {
+		case simklapi.MediaTypeMovies, simklapi.MediaTypeShows, simklapi.MediaTypeAnime:
+			groups[kind] = append(groups[kind], item)
+		default:
+			other = append(other, item)
+		}
+	}
+
+	if nonEmptyDiscoveryKindGroups(groups, groupOrder) < 2 {
+		return items
+	}
+
+	ret := make([]simklapi.DiscoveryMedia, 0, len(items))
+	indexes := map[simklapi.MediaType]int{}
+	for len(ret) < len(items) {
+		added := false
+		for _, kind := range groupOrder {
+			index := indexes[kind]
+			if index >= len(groups[kind]) {
+				continue
+			}
+			ret = append(ret, groups[kind][index])
+			indexes[kind] = index + 1
+			added = true
+		}
+		if !added {
+			break
+		}
+	}
+
+	ret = append(ret, other...)
+	return ret
+}
+
+func nonEmptyDiscoveryKindGroups(groups map[simklapi.MediaType][]simklapi.DiscoveryMedia, order []simklapi.MediaType) int {
+	count := 0
+	for _, kind := range order {
+		if len(groups[kind]) > 0 {
+			count++
+		}
+	}
+	return count
 }
 
 func (h *Handler) listSeasonalDiscoveryMediaViaSimklREST(
@@ -1511,10 +1583,14 @@ func normalizedSIMKLGenre(genre string) string {
 		return "sci fi"
 	case "sports":
 		return "sport"
+	case "children", "childrens":
+		return "kids"
 	case "talkshow":
 		return "talk show"
 	case "historical":
 		return "history"
+	case "superpower", "superpowers":
+		return "super power"
 	default:
 		return genre
 	}

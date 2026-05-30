@@ -120,8 +120,10 @@ func TestFilterDiscoveryMediaRequiresKnownSeasonMonth(t *testing.T) {
 func TestMatchesGenresNormalizesSIMKLAliases(t *testing.T) {
 	wantedSciFi := "Science Fiction"
 	wantedSports := "Sports"
+	wantedKids := "Kids"
+	wantedSuperPower := "Super Power"
 
-	if !matchesGenres([]string{"Sci-Fi", "Sport"}, []*string{&wantedSciFi, &wantedSports}) {
+	if !matchesGenres([]string{"Sci-Fi", "Sport", "Children", "Superpower"}, []*string{&wantedSciFi, &wantedSports, &wantedKids, &wantedSuperPower}) {
 		t.Fatalf("expected SIMKL genre aliases to match discover genre filters")
 	}
 }
@@ -147,6 +149,26 @@ func TestInterleaveDiscoveryMediaGroups(t *testing.T) {
 		if titles[i] != expected[i] {
 			t.Fatalf("expected %v, got %v", expected, titles)
 		}
+	}
+}
+
+func TestBalanceDiscoveryMediaKindsKeepsAnimeVisible(t *testing.T) {
+	items := []simklapi.DiscoveryMedia{
+		{Kind: simklapi.MediaTypeMovies, Media: simklapi.StandardMedia{Title: "Movie 1"}},
+		{Kind: simklapi.MediaTypeMovies, Media: simklapi.StandardMedia{Title: "Movie 2"}},
+		{Kind: simklapi.MediaTypeMovies, Media: simklapi.StandardMedia{Title: "Movie 3"}},
+		{Kind: simklapi.MediaTypeShows, Media: simklapi.StandardMedia{Title: "Show 1"}},
+		{Kind: simklapi.MediaTypeShows, Media: simklapi.StandardMedia{Title: "Show 2"}},
+		{Kind: simklapi.MediaTypeAnime, Media: simklapi.StandardMedia{Title: "Anime 1", Type: string(simklapi.MediaTypeAnime)}},
+		{Kind: simklapi.MediaTypeAnime, Media: simklapi.StandardMedia{Title: "Anime 2", Type: string(simklapi.MediaTypeAnime)}},
+	}
+
+	ret := balanceDiscoveryMediaKinds(items)
+	if ret[2].Media.Title != "Anime 1" {
+		t.Fatalf("expected anime to be pulled into the first mixed group, got %q", ret[2].Media.Title)
+	}
+	if ret[5].Media.Title != "Anime 2" {
+		t.Fatalf("expected anime to stay visible in the second mixed group, got %q", ret[5].Media.Title)
 	}
 }
 
