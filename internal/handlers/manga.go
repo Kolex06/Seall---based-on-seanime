@@ -69,8 +69,8 @@ var mangaTagsCache *mediaapi.MediaTagMap
 
 // HandleGetRawMangaCollectionTags
 //
-//	@summary returns the SIMKL tags for the user's raw manga collection.
-//	@desc This runs a dedicated SIMKL tags query used by the lists page filters.
+//	@summary returns the SIMKL genres for the user's raw reading collection.
+//	@desc The response keeps the tag-map shape used by the lists page filters, but the values come from SIMKL genres when available.
 //	@route /api/v1/reading/simkl/collection/raw/tags [GET]
 //	@returns mediaapi.MediaTagMap
 func (h *Handler) HandleGetRawMangaCollectionTags(c echo.Context) error {
@@ -82,22 +82,12 @@ func (h *Handler) HandleGetRawMangaCollectionTags(c echo.Context) error {
 		return h.RespondWithData(c, *mangaTagsCache)
 	}
 
-	userName := h.App.GetUsername()
-	if userName == "" || h.App.GetUser().IsSimulated {
-		return h.RespondWithData(c, mediaapi.MediaTagMap{})
-	}
-
-	ret, err := h.App.MediaPlatformRef.Get().GetMediaApiClient().MangaCollectionTags(c.Request().Context(), &userName)
+	collection, err := h.App.GetRawMangaCollection(false)
 	if err != nil {
-		if isCollectionTagsAuthError(err) {
-			tags := mediaapi.MediaTagMap{}
-			mangaTagsCache = &tags
-			return h.RespondWithData(c, tags)
-		}
 		return h.RespondWithError(c, err)
 	}
 
-	tags := mediaapi.MediaTagMapFromMangaCollectionTags(ret)
+	tags := mediaapi.MediaTagMapFromMangaCollectionGenres(collection)
 	mangaTagsCache = &tags
 
 	return h.RespondWithData(c, tags)

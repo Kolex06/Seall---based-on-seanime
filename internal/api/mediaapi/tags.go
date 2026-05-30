@@ -54,6 +54,58 @@ func MediaTagMapFromMangaCollectionTags(data *MangaCollectionTags) MediaTagMap {
 	return ret
 }
 
+func MediaTagMapFromAnimeCollectionGenres(data *AnimeCollection) MediaTagMap {
+	ret := make(MediaTagMap)
+	if data == nil || data.GetMediaListCollection() == nil {
+		return ret
+	}
+
+	for _, list := range data.GetMediaListCollection().GetLists() {
+		if list == nil {
+			continue
+		}
+		for _, entry := range list.GetEntries() {
+			if entry == nil || entry.GetMedia() == nil {
+				continue
+			}
+			for _, genre := range entry.GetMedia().GetGenres() {
+				if genre == nil {
+					continue
+				}
+				ret.add(entry.GetMedia().GetID(), *genre)
+			}
+		}
+	}
+
+	return ret
+}
+
+func MediaTagMapFromMangaCollectionGenres(data *MangaCollection) MediaTagMap {
+	ret := make(MediaTagMap)
+	if data == nil || data.GetMediaListCollection() == nil {
+		return ret
+	}
+
+	for _, list := range data.GetMediaListCollection().GetLists() {
+		if list == nil {
+			continue
+		}
+		for _, entry := range list.GetEntries() {
+			if entry == nil || entry.GetMedia() == nil {
+				continue
+			}
+			for _, genre := range entry.GetMedia().GetGenres() {
+				if genre == nil {
+					continue
+				}
+				ret.add(entry.GetMedia().GetID(), *genre)
+			}
+		}
+	}
+
+	return ret
+}
+
 func (m MediaTagMap) add(mediaID int, tagName string) {
 	if tagName == "" {
 		return

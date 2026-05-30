@@ -285,7 +285,7 @@ export function SearchOptions({
                     leftAddon={!params.tags?.length &&
                         <LuTags className={cn((params.tags !== null && !!params.tags.length) && "text-indigo-300 font-bold text-xl")} />}
                     emptyMessage="No options found"
-                    label="Tags" placeholder="All tags" className="w-full"
+                    label="SIMKL Genres" placeholder="All SIMKL genres" className="w-full"
                     options={ADVANCED_SEARCH_MEDIA_TAGS
                         .filter(tag => {
                             if (params.isAdult && serverStatus?.settings?.simkl?.enableAdultContent) {

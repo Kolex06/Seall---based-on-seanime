@@ -14,7 +14,6 @@ import { useNakamaStatus } from "@/app/(main)/_features/nakama/nakama-manager"
 import { useServerStatus } from "@/app/(main)/_hooks/use-server-status"
 import {
     ADVANCED_SEARCH_FORMATS,
-    ADVANCED_SEARCH_MEDIA_TAGS,
     ADVANCED_SEARCH_SEASONS,
     ADVANCED_SEARCH_STATUS,
 } from "@/app/(main)/search/_lib/advanced-search-constants"
@@ -153,7 +152,7 @@ export function DetailedLibraryView(props: LibraryViewProps) {
                 </div>
             </div>}
 
-            <SearchOptions />
+            <SearchOptions libraryGenres={libraryGenres} />
 
             <GenreSelector genres={libraryGenres} />
 
@@ -287,7 +286,7 @@ const SearchInput = () => {
     )
 }
 
-export function SearchOptions() {
+export function SearchOptions({ libraryGenres }: { libraryGenres: string[] }) {
 
     const serverStatus = useServerStatus()
     const [params, setParams] = useAtom(__library_paramsAtom)
@@ -364,18 +363,11 @@ export function SearchOptions() {
                     leftAddon={!params.tags &&
                         <LuTags />}
                     emptyMessage="No options found"
-                    label="Tags"
-                    placeholder="All tags"
+                    label="SIMKL Genres"
+                    placeholder="All SIMKL genres"
                     className="w-full"
                     fieldClass="w-full"
-                    options={ADVANCED_SEARCH_MEDIA_TAGS
-                        .filter(tag => {
-                            if (params.isAdult && serverStatus?.settings?.simkl?.enableAdultContent) {
-                                return true
-                            }
-                            return tag.isAdult === false
-                        })
-                        .map(tag => ({ value: tag.name, label: tag.name, textValue: tag.name }))}
+                    options={libraryGenres.map(genre => ({ value: genre, label: genre, textValue: genre }))}
                     value={params.tags ? params.tags : []}
                     onValueChange={v => setParams(draft => {
                         draft.tags = v

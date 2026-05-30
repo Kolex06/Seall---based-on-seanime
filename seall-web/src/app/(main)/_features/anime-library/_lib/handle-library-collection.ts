@@ -1,4 +1,5 @@
 import { Media_LibraryCollectionList } from "@/api/generated/types"
+import { useGetRawMediaCollectionTags } from "@/api/hooks/simkl.hooks"
 import { useGetLibraryCollection } from "@/api/hooks/media_library.hooks"
 import { useGetContinuityWatchHistory } from "@/api/hooks/continuity.hooks"
 import { animeLibraryCollectionAtom } from "@/app/(main)/_atoms/anime-library-collection.atoms"
@@ -32,6 +33,7 @@ export function useHandleLibraryCollection() {
     const { animeLibraryCollectionDefaultSorting, continueWatchingDefaultSorting } = useThemeSettings()
 
     const { data: watchHistory } = useGetContinuityWatchHistory()
+    const { data: simklGenreTagMap } = useGetRawMediaCollectionTags()
 
     /**
      * Fetch the anime library collection
@@ -134,6 +136,7 @@ export function useHandleLibraryCollection() {
                 serverStatus?.settings?.simkl?.enableAdultContent,
                 continueWatchingList,
                 watchHistory,
+                simklGenreTagMap,
             )
 
             // Reset `continueWatchingOnly` to false if it's about to make the list disappear
@@ -151,6 +154,7 @@ export function useHandleLibraryCollection() {
                     serverStatus?.settings?.simkl?.enableAdultContent,
                     continueWatchingList,
                     watchHistory,
+                    simklGenreTagMap,
                 )
             }
 
@@ -167,7 +171,7 @@ export function useHandleLibraryCollection() {
             _lists.find(n => n.type === "COMPLETED"),
             _lists.find(n => n.type === "DROPPED"),
         ].filter(Boolean)
-    }, [data, params, animeLibraryCollectionDefaultSorting, serverStatus?.settings?.simkl?.enableAdultContent])
+    }, [data, params, animeLibraryCollectionDefaultSorting, serverStatus?.settings?.simkl?.enableAdultContent, simklGenreTagMap])
 
     /**
      * Filter the collection
@@ -186,7 +190,8 @@ export function useHandleLibraryCollection() {
                 paramsToApply,
                 serverStatus?.settings?.simkl?.enableAdultContent,
                 data.continueWatchingList,
-                watchHistory)
+                watchHistory,
+                simklGenreTagMap)
             return {
                 type: obj.type,
                 status: obj.status,
@@ -200,7 +205,7 @@ export function useHandleLibraryCollection() {
             _lists.find(n => n.type === "COMPLETED"),
             _lists.find(n => n.type === "DROPPED"),
         ].filter(Boolean)
-    }, [data, params, serverStatus?.settings?.simkl?.enableAdultContent, watchHistory])
+    }, [data, params, serverStatus?.settings?.simkl?.enableAdultContent, watchHistory, simklGenreTagMap])
 
     /**
      * Sort the continue watching list
@@ -243,8 +248,9 @@ export function useHandleLibraryCollection() {
         const allGenres = filteredCollection?.flatMap(l => {
             return l.entries?.flatMap(e => e.media?.genres) ?? []
         })
-        return [...new Set(allGenres)].filter(Boolean)?.sort((a, b) => a.localeCompare(b))
-    }, [filteredCollection])
+        const simklGenres = Object.values(simklGenreTagMap ?? {}).flat()
+        return [...new Set([...allGenres, ...simklGenres])].filter(Boolean)?.sort((a, b) => a.localeCompare(b))
+    }, [filteredCollection, simklGenreTagMap])
 
     return {
         libraryGenres,

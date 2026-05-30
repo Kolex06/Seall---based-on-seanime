@@ -160,6 +160,17 @@ export const DEFAULT_MANGA_COLLECTION_PARAMS: CollectionParams<"manga"> = {
     unreadOnly: false,
 }
 
+function includesGenre(genres: Array<string | null | undefined>, wanted: string) {
+    const normalWanted = wanted.trim().toLowerCase()
+    return genres.some(genre => genre?.trim().toLowerCase() === normalWanted)
+}
+
+function entryGenres(media: { id?: number | null, genres?: Array<string | null> | null } | null | undefined, mediaTagMap?: Record<number, Array<string>> | null) {
+    const directGenres = media?.genres ?? []
+    const simklGenreTags = media?.id ? (mediaTagMap?.[media.id] ?? []) : []
+    return [...directGenres, ...simklGenreTags]
+}
+
 
 function getParamValue<T extends any>(value: T | ""): any {
     if (value === "") return undefined
@@ -219,7 +230,8 @@ export function filterListEntries<T extends MediaAPI_MangaCollection_MediaListCo
     // Filter by genre
     if (!!arr && !!params.genre?.length) {
         arr = arr.filter(n => {
-            return params.genre?.every(genre => n.media?.genres?.includes(genre))
+            const genres = entryGenres(n.media, mediaTagMap)
+            return params.genre?.every(genre => includesGenre(genres, genre))
         })
     }
 
@@ -321,7 +333,8 @@ export function filterCollectionEntries<T extends Media_LibraryCollectionEntry[]
     // Filter by genre
     if (!!arr && !!params.genre?.length) {
         arr = arr.filter(n => {
-            return params.genre?.every(genre => n.media?.genres?.includes(genre))
+            const genres = entryGenres(n.media, mediaTagMap)
+            return params.genre?.every(genre => includesGenre(genres, genre))
         })
     }
 

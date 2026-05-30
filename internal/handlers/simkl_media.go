@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/labstack/echo/v4"
@@ -69,25 +70,12 @@ func (h *Handler) HandleGetRawMediaCollection(c echo.Context) error {
 }
 
 var tagsCache *mediaapi.MediaTagMap
-
-func isCollectionTagsAuthError(err error) bool {
-	if err == nil {
-		return false
-	}
-	if errors.Is(err, mediaapi.ErrNotAuthenticated) {
-		return true
-	}
-
-	msg := strings.ToLower(err.Error())
-	return strings.Contains(msg, "not authenticated") ||
-		strings.Contains(msg, "unauthorized") ||
-		strings.Contains(msg, "invalid token")
-}
+var simklGenreTagsCache = result.NewCache[int, []string]()
 
 // HandleGetRawMediaCollectionTags
 //
-//	@summary returns the SIMKL tags for the user's raw anime collection.
-//	@desc This runs a dedicated SIMKL tags query used by the lists page filters.
+//	@summary returns the SIMKL genres for the user's raw media collection.
+//	@desc The response keeps the tag-map shape used by the lists page filters, but the values come from SIMKL genres.
 //	@returns mediaapi.MediaTagMap
 //	@route /api/v1/simkl/collection/raw/tags [GET]
 func (h *Handler) HandleGetRawMediaCollectionTags(c echo.Context) error {
@@ -99,25 +87,153 @@ func (h *Handler) HandleGetRawMediaCollectionTags(c echo.Context) error {
 		return h.RespondWithData(c, *tagsCache)
 	}
 
-	userName := h.App.GetUsername()
-	if userName == "" || h.App.GetUser().IsSimulated {
-		return h.RespondWithData(c, mediaapi.MediaTagMap{})
-	}
-
-	ret, err := h.App.MediaPlatformRef.Get().GetMediaApiClient().AnimeCollectionTags(c.Request().Context(), &userName)
+	collection, err := h.App.GetRawMediaCollection(false)
 	if err != nil {
-		if isCollectionTagsAuthError(err) {
-			tags := mediaapi.MediaTagMap{}
-			tagsCache = &tags
-			return h.RespondWithData(c, tags)
-		}
 		return h.RespondWithError(c, err)
 	}
 
-	tags := mediaapi.MediaTagMapFromAnimeCollectionTags(ret)
+	tags := h.mediaTagMapFromSimklGenres(c.Request().Context(), collection)
 	tagsCache = &tags
 
 	return h.RespondWithData(c, tags)
+}
+
+func (h *Handler) mediaTagMapFromSimklGenres(ctx context.Context, collection *mediaapi.AnimeCollection) mediaapi.MediaTagMap {
+	tags := mediaapi.MediaTagMapFromAnimeCollectionGenres(collection)
+	if collection == nil || collection.GetMediaListCollection() == nil {
+		return tags
+	}
+
+	client := h.App.SimklClientRef.Get()
+	if client == nil {
+		return tags
+	}
+
+	type genreJob struct {
+		id   int
+		kind simklapi.MediaType
+	}
+
+	queued := make(map[int]struct{})
+	jobs := make(chan genreJob)
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+
+	addGenres := func(mediaID int, genres []string) {
+		if len(genres) == 0 {
+			return
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		for _, genre := range genres {
+			addMediaTag(tags, mediaID, genre)
+		}
+	}
+
+	workerCount := 8
+	for i := 0; i < workerCount; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for job := range jobs {
+				media, err := client.MediaDetails(ctx, job.kind, strconv.Itoa(job.id), "full")
+				if err != nil || media == nil {
+					continue
+				}
+				genres := cleanGenreList(media.Genres)
+				simklGenreTagsCache.SetT(job.id, genres, 24*time.Hour)
+				addGenres(job.id, genres)
+			}
+		}()
+	}
+
+	for _, list := range collection.GetMediaListCollection().GetLists() {
+		if list == nil {
+			continue
+		}
+		for _, entry := range list.GetEntries() {
+			if entry == nil || entry.GetMedia() == nil {
+				continue
+			}
+			media := entry.GetMedia()
+			mediaID := media.GetID()
+			if mediaID == 0 {
+				continue
+			}
+			if genres, ok := simklGenreTagsCache.Get(mediaID); ok {
+				addGenres(mediaID, genres)
+				continue
+			}
+			if _, ok := queued[mediaID]; ok {
+				continue
+			}
+			queued[mediaID] = struct{}{}
+			jobs <- genreJob{
+				id:   mediaID,
+				kind: simklKindForBaseAnime(media),
+			}
+		}
+	}
+
+	close(jobs)
+	wg.Wait()
+
+	return tags
+}
+
+func simklKindForBaseAnime(media *mediaapi.BaseAnime) simklapi.MediaType {
+	if media == nil {
+		return simklapi.MediaTypeShows
+	}
+	if cached, ok := simklapi.CachedDiscoveryMedia(media.GetID()); ok && cached.Kind != "" {
+		return cached.Kind
+	}
+	if siteURL := media.GetSiteURL(); siteURL != nil {
+		site := strings.ToLower(*siteURL)
+		switch {
+		case strings.Contains(site, "/movie/") || strings.Contains(site, "/movies/"):
+			return simklapi.MediaTypeMovies
+		case strings.Contains(site, "/anime/"):
+			return simklapi.MediaTypeAnime
+		case strings.Contains(site, "/tv/") || strings.Contains(site, "/show/") || strings.Contains(site, "/shows/"):
+			return simklapi.MediaTypeShows
+		}
+	}
+	if format := media.GetFormat(); format != nil && *format == mediaapi.MediaFormatMovie {
+		return simklapi.MediaTypeMovies
+	}
+	return simklapi.MediaTypeShows
+}
+
+func cleanGenreList(genres []string) []string {
+	ret := make([]string, 0, len(genres))
+	seen := make(map[string]struct{}, len(genres))
+	for _, genre := range genres {
+		genre = strings.TrimSpace(genre)
+		if genre == "" {
+			continue
+		}
+		key := strings.ToLower(genre)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		ret = append(ret, genre)
+	}
+	return ret
+}
+
+func addMediaTag(tags mediaapi.MediaTagMap, mediaID int, tagName string) {
+	tagName = strings.TrimSpace(tagName)
+	if mediaID == 0 || tagName == "" {
+		return
+	}
+	for _, current := range tags[mediaID] {
+		if strings.EqualFold(current, tagName) {
+			return
+		}
+	}
+	tags[mediaID] = append(tags[mediaID], tagName)
 }
 
 // HandleEditMediaListEntry
@@ -661,6 +777,7 @@ func dedupeDiscoveryMedia(items []simklapi.DiscoveryMedia) []simklapi.DiscoveryM
 
 func filterDiscoveryMedia(items []simklapi.DiscoveryMedia, request listMediaRequest) []simklapi.DiscoveryMedia {
 	ret := make([]simklapi.DiscoveryMedia, 0, len(items))
+	wantedGenres := simklGenreFilters(request.Genres, request.Tags)
 	for _, item := range items {
 		base := simklapi.ToBaseAnime(item.Kind, &item.Media)
 		if base == nil {
@@ -678,7 +795,7 @@ func filterDiscoveryMedia(items []simklapi.DiscoveryMedia, request listMediaRequ
 		if !matchesMediaSeason(base, request.Season) {
 			continue
 		}
-		if !matchesGenres(item.Media.Genres, request.Genres) {
+		if !matchesGenres(item.Media.Genres, wantedGenres) {
 			continue
 		}
 		if !matchesAverageScore(item.Media.Ratings.Simkl, request.AverageScoreGreater) {
@@ -689,6 +806,16 @@ func filterDiscoveryMedia(items []simklapi.DiscoveryMedia, request listMediaRequ
 		}
 		ret = append(ret, item)
 	}
+	return ret
+}
+
+func simklGenreFilters(genres []*string, tags []*string) []*string {
+	if len(tags) == 0 {
+		return genres
+	}
+	ret := make([]*string, 0, len(genres)+len(tags))
+	ret = append(ret, genres...)
+	ret = append(ret, tags...)
 	return ret
 }
 

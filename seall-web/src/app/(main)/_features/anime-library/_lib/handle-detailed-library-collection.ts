@@ -124,8 +124,9 @@ export function useHandleDetailedLibraryCollection({ enabled = true }: { enabled
         const allGenres = filteredCollection?.flatMap(l => {
             return l.entries?.flatMap(e => e.media?.genres) ?? []
         })
-        return [...new Set(allGenres)].filter(Boolean)?.sort((a, b) => a.localeCompare(b))
-    }, [filteredCollection])
+        const simklGenres = Object.values(animeTagMap ?? {}).flat()
+        return [...new Set([...allGenres, ...simklGenres])].filter(Boolean)?.sort((a, b) => a.localeCompare(b))
+    }, [filteredCollection, animeTagMap])
 
     return {
         isLoading: isLoading,

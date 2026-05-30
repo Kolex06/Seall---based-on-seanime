@@ -26,6 +26,7 @@ type restDiscoveryMedia struct {
 	Released      string          `json:"released,omitempty"`
 	Status        string          `json:"status,omitempty"`
 	Overview      string          `json:"overview,omitempty"`
+	Genres        []string        `json:"genres,omitempty"`
 	AnimeType     string          `json:"anime_type,omitempty"`
 	Country       string          `json:"country,omitempty"`
 	IDs           restDiscoveryID `json:"ids,omitempty"`
@@ -144,6 +145,7 @@ func toDiscoveryMedia(fallback MediaType, items []restDiscoveryMedia) []Discover
 			URL:           mediaURL,
 			Runtime:       runtime,
 			Overview:      item.Overview,
+			Genres:        item.Genres,
 			Country:       item.Country,
 			Released:      released,
 			AnimeType:     item.AnimeType,
@@ -155,7 +157,7 @@ func toDiscoveryMedia(fallback MediaType, items []restDiscoveryMedia) []Discover
 		cacheDiscoveryMedia(kind, media)
 
 		ret = append(ret, DiscoveryMedia{
-			Kind: kind,
+			Kind:  kind,
 			Media: media,
 		})
 	}

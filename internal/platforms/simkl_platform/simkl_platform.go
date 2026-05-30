@@ -189,7 +189,7 @@ func (sp *SimklPlatform) GetAnimeDetails(ctx context.Context, mediaID int) (*med
 	}
 
 	kind := sp.kindForMediaID(mediaID)
-	if cached, ok := simkl.CachedDiscoveryMedia(mediaID); ok {
+	if cached, ok := simkl.CachedDiscoveryMedia(mediaID); ok && len(cached.Media.Genres) > 0 {
 		ret := simkl.ToAnimeDetails(cached.Kind, &cached.Media)
 		sp.setMediaKind(mediaID, cached.Kind)
 		return sp.helper.TriggerGetAnimeDetailsEvent(ret)
@@ -260,7 +260,7 @@ func (sp *SimklPlatform) refreshAnimeCollection(ctx context.Context) error {
 	_, _ = sp.simklClient().Activities(ctx)
 
 	q := url.Values{}
-	q.Set("extended", "full_anime_seasons")
+	q.Set("extended", "full")
 	items, err := sp.simklClient().AllItems(ctx, simkl.MediaTypeAll, "", q)
 	if err != nil {
 		return err
