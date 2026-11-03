@@ -97,8 +97,9 @@ export function HomeScreen() {
     const setHomeSettingsModalOpen = useSetAtom(__home_settingsModalOpen)
 
     const homeItems = React.useMemo(() => {
-        let ret = !!_homeItems?.length ? _homeItems : DEFAULT_HOME_ITEMS
+        let ret = _homeItems ?? DEFAULT_HOME_ITEMS
         ret = ret.filter(item => !["manga-carousel", "manga-library", "manga-continue-reading"].includes(item.type))
+        ret = [...ret.filter(item => item.type === "discover-header" || item.type === "anime-continue-watching-header"), ...ret.filter(item => item.type !== "discover-header" && item.type !== "anime-continue-watching-header")]
         // replace anime-continue-watching-header with anime-continue-watching on mobile
         if (width < 1024 && ret[0]?.type === "anime-continue-watching-header") {
             if (ret.find(n => n.type === "anime-continue-watching")) {
@@ -119,8 +120,9 @@ export function HomeScreen() {
     }, [_homeItems, width < 1024])
 
     React.useEffect(() => {
-        setDiscoverPageType(discoverPageType)
-    }, [discoverPageType])
+        setDiscoverHeaderType("anime")
+        setDiscoverPageType("anime")
+    }, [setDiscoverHeaderType, setDiscoverPageType])
 
     const setScannerModalOpen = useSetAtom(__scanner_modalIsOpen)
 
@@ -471,7 +473,7 @@ export function HomeScreenItem(props: HomeScreenItemProps) {
             return {
                 ..._item,
                 schemaVersion: schema.schemaVersion,
-                options: undefined,
+                options: _item.options,
             }
         }
         return _item
@@ -558,7 +560,7 @@ export function HomeScreenItem(props: HomeScreenItemProps) {
         return (
             <>
                 {item.options?.type !== "global" && <MediaScheduleCalendar libraryCollectionProps={props.libraryCollectionProps} item={item} />}
-                {item.options?.type === "global" && <GlobalMediaScheduleCalendar libraryCollectionProps={props.libraryCollectionProps} item={item} />}
+                {item.options?.type === "global" && <PageWrapper className="px-4 py-4"><ScheduleCalendar source="all" /></PageWrapper>}
             </>
         )
     }
@@ -656,7 +658,7 @@ function LocalAnimeLibrary(props: { libraryCollectionProps: HandleLibraryCollect
         <>
             <DetailedLibraryView
                 isHomeItem={true}
-                collectionList={props.libraryCollectionProps.libraryCollectionList}
+                collectionList={props.libraryCollectionProps.libraryCollectionList.map(list => ({ ...list, entries: list.entries?.filter(entry => !!entry.libraryData) }))}
                 continueWatchingList={props.libraryCollectionProps.continueWatchingList}
                 isLoading={props.libraryCollectionProps.isLoading}
                 hasEntries={props.libraryCollectionProps.hasEntries}
@@ -708,7 +710,6 @@ function LibraryUpcomingEpisodes(props: { libraryCollectionProps: HandleLibraryC
     const { libraryCollectionProps, item } = props
     const { hasEntries } = libraryCollectionProps
 
-    if (!hasEntries) return null
 
     return <PageWrapper className="space-y-0 px-4">
         <UpcomingEpisodes />
@@ -721,145 +722,10 @@ function MediaScheduleCalendar(props: { libraryCollectionProps: HandleLibraryCol
     const {} = libraryCollectionProps
 
     return <PageWrapper className="space-y-0 px-4 py-4">
-        <ScheduleCalendar />
+        <ScheduleCalendar source="list" />
     </PageWrapper>
 }
 
-function GlobalMediaScheduleCalendar(props: { libraryCollectionProps: HandleLibraryCollectionProps, item: Models_HomeItem }) {
-    const { libraryCollectionProps, item } = props
-    const {} = libraryCollectionProps
-
-    const now = new Date()
-    const twoWeeksBefore = addDays(now, -14)
-    const weekBefore = addDays(now, -7)
-    const weekAfter = addDays(now, 7)
-    const twoWeeksAfter = addDays(now, 14)
-
-    const { data: previous1, isLoading: loadingPrevious1 } = useListRecentAiringMedia({
-        page: 1,
-        perPage: 100,
-        airingAt_lesser: Math.floor(weekBefore.getTime() / 1000),
-        airingAt_greater: Math.floor(twoWeeksBefore.getTime() / 1000),
-        notYetAired: false,
-        sort: ["TIME"],
-    })
-
-    const { data: previous2, isLoading: loadingPrevious2 } = useListRecentAiringMedia({
-        page: 2,
-        perPage: 100,
-        airingAt_lesser: Math.floor(weekBefore.getTime() / 1000),
-        airingAt_greater: Math.floor(twoWeeksBefore.getTime() / 1000),
-        notYetAired: false,
-        sort: ["TIME"],
-    })
-
-    const { data: previous3, isLoading: loadingPrevious3 } = useListRecentAiringMedia({
-        page: 1,
-        perPage: 200,
-        airingAt_lesser: Math.floor(now.getTime() / 1000),
-        airingAt_greater: Math.floor(weekBefore.getTime() / 1000),
-        notYetAired: false,
-        sort: ["TIME"],
-    })
-
-    const { data: previous4, isLoading: loadingPrevious4 } = useListRecentAiringMedia({
-        page: 2,
-        perPage: 200,
-        airingAt_lesser: Math.floor(now.getTime() / 1000),
-        airingAt_greater: Math.floor(weekBefore.getTime() / 1000),
-        notYetAired: false,
-        sort: ["TIME"],
-    })
-
-    const { data: next1, isLoading: loadingNext1 } = useListRecentAiringMedia({
-        page: 1,
-        perPage: 100,
-        airingAt_lesser: Math.floor(weekAfter.getTime() / 1000),
-        airingAt_greater: Math.floor(now.getTime() / 1000),
-        notYetAired: true,
-        sort: ["TIME"],
-    })
-
-    const { data: next2, isLoading: loadingNext2 } = useListRecentAiringMedia({
-        page: 2,
-        perPage: 100,
-        airingAt_lesser: Math.floor(weekAfter.getTime() / 1000),
-        airingAt_greater: Math.floor(now.getTime() / 1000),
-        notYetAired: true,
-        sort: ["TIME"],
-    })
-
-    const { data: next3, isLoading: loadingNext3 } = useListRecentAiringMedia({
-        page: 1,
-        perPage: 100,
-        airingAt_lesser: Math.floor(twoWeeksAfter.getTime() / 1000),
-        airingAt_greater: Math.floor(weekAfter.getTime() / 1000),
-        notYetAired: true,
-        sort: ["TIME"],
-    })
-
-    const { data: next4, isLoading: loadingNext4 } = useListRecentAiringMedia({
-        page: 2,
-        perPage: 100,
-        airingAt_lesser: Math.floor(twoWeeksAfter.getTime() / 1000),
-        airingAt_greater: Math.floor(weekAfter.getTime() / 1000),
-        notYetAired: true,
-        sort: ["TIME"],
-    })
-
-    const items = React.useMemo<Media_ScheduleItem[]>(() => {
-        let airingSchedules: MediaAPI_ListRecentMedia_Page_AiringSchedules[] = []
-
-        // Combine all results
-        if (previous1?.Page?.airingSchedules) {
-            airingSchedules = [...previous1.Page.airingSchedules]
-        }
-        if (previous2?.Page?.airingSchedules) {
-            airingSchedules = [...airingSchedules, ...previous2.Page.airingSchedules]
-        }
-        if (previous3?.Page?.airingSchedules) {
-            airingSchedules = [...airingSchedules, ...previous3.Page.airingSchedules]
-        }
-        if (previous4?.Page?.airingSchedules) {
-            airingSchedules = [...airingSchedules, ...previous4.Page.airingSchedules]
-        }
-        if (next1?.Page?.airingSchedules) {
-            airingSchedules = [...airingSchedules, ...next1.Page.airingSchedules]
-        }
-        if (next2?.Page?.airingSchedules) {
-            airingSchedules = [...airingSchedules, ...next2.Page.airingSchedules]
-        }
-        if (next3?.Page?.airingSchedules) {
-            airingSchedules = [...airingSchedules, ...next3.Page.airingSchedules]
-        }
-        if (next4?.Page?.airingSchedules) {
-            airingSchedules = [...airingSchedules, ...next4.Page.airingSchedules]
-        }
-
-        return airingSchedules.map(schedule => {
-            const siteUrl = schedule.media?.siteUrl?.toLowerCase() ?? ""
-            const mediaType = schedule.media?.format === "MOVIE" ? "movies" : siteUrl.includes("/anime/") ? "anime" : "shows"
-            const airDate = new Date((schedule.airingAt || 0) * 1000)
-            const dateTimeStr = airDate.toISOString()
-            const timeStr = `${airDate.getHours().toString().padStart(2, "0")}:${airDate.getMinutes().toString().padStart(2, "0")}`
-            return {
-                mediaId: schedule.media!.id,
-                title: schedule.media!.title!.userPreferred!,
-                mediaType,
-                time: timeStr,
-                dateTime: dateTimeStr,
-                image: schedule.media?.bannerImage || schedule.media?.coverImage?.medium!,
-                episodeNumber: schedule.episode,
-                isMovie: schedule.media?.format === "MOVIE",
-                isSeasonFinale: !!schedule.media?.episodes && schedule.media.episodes === schedule.episode,
-            }
-        })
-    }, [previous1, previous2, previous3, previous4, next1, next2, next3, next4])
-
-    return <PageWrapper className="space-y-0 px-4 py-4">
-        <ScheduleCalendar key="home-screen" items={items} />
-    </PageWrapper>
-}
 
 function AnimeCarousel(props: { libraryCollectionProps: HandleLibraryCollectionProps, item: Models_HomeItem }) {
     const { libraryCollectionProps, item } = props
@@ -881,7 +747,7 @@ function AnimeCarousel(props: { libraryCollectionProps: HandleLibraryCollectionP
         status: (!!options?.status?.length && Array.isArray(options.status)) ? options.status as any : ["RELEASING", "FINISHED"],
         isAdult: options?.isAdult || undefined,
         countryOfOrigin: options?.countryOfOrigin || undefined,
-    }, !!options?.name && isInView)
+    }, isInView)
 
     return (
         <PageWrapper className="space-y-0 px-4" ref={ref}>
@@ -898,7 +764,7 @@ function AnimeCarousel(props: { libraryCollectionProps: HandleLibraryCollectionP
                 {/*<CarouselMasks />*/}
                 <CarouselDotButtons className="-top-2" />
                 <CarouselContent className="px-6">
-                    {!!data ? data?.Page?.media?.filter(Boolean)?.sort((a, b) => b.meanScore! - a.meanScore!).map(media => {
+                    {!!data ? data?.Page?.media?.filter(Boolean)?.map(media => {
                         return (
                             <MediaEntryCard
                                 key={media.id}
@@ -944,7 +810,7 @@ function MyLists(props: { item: Models_HomeItem }) {
         completedList,
         droppedList,
         customLists,
-    } = useHandleUserMediaLists("", item.options?.type)
+    } = useHandleUserMediaLists("", "anime", true)
 
     const isCustomList = !!(item.options?.customListName?.trim?.()?.length)
 

@@ -18,6 +18,13 @@ func (p *ProviderImpl) fetchSimklEpisodeMetadata(ctx context.Context, mId int) (
 	}
 
 	client := p.simklClientRef.Get()
+	if cached, ok := simkl.CachedDiscoveryMedia(mId); ok && (cached.Kind == simkl.MediaTypeMovies || strings.EqualFold(cached.Media.AnimeType, "movie")) {
+		media := cached.Media
+		if details, err := client.MediaDetails(ctx, cached.Kind, strconv.Itoa(mId), "full"); err == nil && details != nil {
+			media = *details
+		}
+		return buildSimklMovieMetadata(mId, &media), nil
+	}
 	var lastErr error
 	for _, kind := range simklEpisodeKindCandidates(mId) {
 		episodes, err := client.MediaEpisodes(ctx, kind, strconv.Itoa(mId), "full")
@@ -35,6 +42,25 @@ func (p *ProviderImpl) fetchSimklEpisodeMetadata(ctx context.Context, mId int) (
 		lastErr = fmt.Errorf("simkl: no episode metadata returned for %d", mId)
 	}
 	return nil, lastErr
+}
+
+func buildSimklMovieMetadata(mId int, media *simkl.StandardMedia) *metadata.AnimeMetadata {
+	base := simkl.ToBaseAnime(simkl.MediaTypeMovies, media)
+	ret := buildSimklAnimeMetadata(mId, []simkl.Episode{{Episode: 1, Title: base.GetPreferredTitle(), Description: media.Overview, Date: media.Released}})
+	ret.Titles["en"] = base.GetPreferredTitle()
+	ret.Mappings.Type = "movie"
+	ret.Mappings.ImdbId = media.IDs.IMDB
+	ret.Mappings.ThemoviedbId = media.IDs.TMDB
+	ep := ret.Episodes["1"]
+	ep.Image = simkl.ImageURL(simkl.ImageKindFanart, media.Fanart, simkl.ImageSizeFanartWide)
+	if ep.Image == "" {
+		ep.Image = base.GetCoverImageSafe()
+	}
+	ep.HasImage = ep.Image != ""
+	if media.Runtime != nil {
+		ep.Length = *media.Runtime
+	}
+	return ret
 }
 
 func simklEpisodeKindCandidates(mId int) []simkl.MediaType {

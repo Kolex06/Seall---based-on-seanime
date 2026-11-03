@@ -14,7 +14,7 @@ export function DiscoverMissedSequelsSection({ title = "You Might Have Missed" }
 
     if (!isInView && !data) return <div ref={ref} />
 
-    if (!data?.length) return null
+    if (!data?.length) return <div ref={ref} className="py-4"><h2>{title}</h2><p className="text-[--muted]">{isLoading ? "Loading sequels..." : "No missing sequels found."}</p></div>
 
     return (
         <PageWrapper className="space-y-2 z-[5] relative" data-discover-missed-sequels-container>

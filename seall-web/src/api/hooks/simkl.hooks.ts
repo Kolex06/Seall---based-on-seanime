@@ -1,4 +1,5 @@
 import { useServerMutation, useServerQuery } from "@/api/client/requests"
+import { simklMediaCategory } from "@/api/simkl-media-category"
 import {
     ListMedia_Variables,
     ListRecentAiringMedia_Variables,
@@ -134,7 +135,8 @@ export function useDeleteMediaListEntry(id: Nullish<string | number>, type: "ani
     })
 }
 
-export function useListMedia(variables: ListMedia_Variables, enabled: boolean) {
+export function useListMedia(input: Omit<ListMedia_Variables, "format"> & { format?: ListMedia_Variables["format"] | "ANIME" }, enabled: boolean) {
+    const variables = { ...input, ...simklMediaCategory(input.format) } as ListMedia_Variables
     return useServerQuery<MediaAPI_ListMedia, ListMedia_Variables>({
         endpoint: API_ENDPOINTS.SIMKL.ListMedia.endpoint,
         method: API_ENDPOINTS.SIMKL.ListMedia.methods[0],

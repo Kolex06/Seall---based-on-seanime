@@ -1,4 +1,5 @@
 import { buildSeaQuery } from "@/api/client/requests"
+import { simklMediaCategory } from "@/api/simkl-media-category"
 import { API_ENDPOINTS } from "@/api/generated/endpoints"
 import { MediaAPI_ListMedia } from "@/api/generated/types"
 import { serverAuthTokenAtom } from "@/app/(main)/_atoms/server-status.atoms"
@@ -18,7 +19,7 @@ export function useMediaAdvancedSearch() {
             const variables = {
                 page: pageParam,
                 perPage: 48,
-                format: __advancedSearch_getValue(params.format)?.toUpperCase(),
+                ...simklMediaCategory(__advancedSearch_getValue(params.format)?.toUpperCase()),
                 search: (params.title === null || params.title === "") ? undefined : params.title,
                 genres: [
                     ...(__advancedSearch_getValue(params.genre) || []),

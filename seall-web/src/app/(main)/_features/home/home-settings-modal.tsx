@@ -88,7 +88,7 @@ export function HomeSettingsModal({ emptyLibrary, isNakamaLibrary }: { emptyLibr
 
         // Check if an item doesn't exist anymore and remove it
         checkTimeRef.current = setTimeout(() => {
-            const newItems = normalizeHomeItems(currentItems)
+            const newItems = normalizeHomeItems(homeItems)
 
             if (newItems.length !== homeItems.length) {
                 setCurrentItems(newItems)
@@ -131,7 +131,8 @@ export function HomeSettingsModal({ emptyLibrary, isNakamaLibrary }: { emptyLibr
             ...item,
             schemaVersion: HOME_ITEMS[item.type].schemaVersion,
         }))
-        return newItems
+        const header = newItems.find(item => ["discover-header", "anime-continue-watching-header"].includes(item.type))
+        return [...(header ? [header] : []), ...newItems.filter(item => !["discover-header", "anime-continue-watching-header"].includes(item.type))]
     }
 
     const handleAddItem = (type: string) => {
@@ -139,9 +140,15 @@ export function HomeSettingsModal({ emptyLibrary, isNakamaLibrary }: { emptyLibr
             id: uuidv4(),
             type,
             schemaVersion: HOME_ITEMS[type].schemaVersion,
+            options: type === "anime-carousel" ? { name: "Trending on SIMKL", sorting: "TRENDING_DESC" }
+                : type === "centered-title" ? { text: "My Media" }
+                : type === "my-lists" ? { type: "anime", statuses: ["CURRENT", "PLANNING"], layout: "carousel" }
+                : undefined,
         }
 
-        const newItems = normalizeHomeItems([...currentItems, newItem])
+        const newItems = normalizeHomeItems(["discover-header", "anime-continue-watching-header"].includes(type)
+            ? [newItem, ...currentItems.filter(item => !["discover-header", "anime-continue-watching-header"].includes(item.type))]
+            : [...currentItems, newItem])
         setCurrentItems(newItems)
         updateHomeItems({ items: newItems }, {
             onSuccess: () => {

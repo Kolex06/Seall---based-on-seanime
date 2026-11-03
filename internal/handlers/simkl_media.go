@@ -434,6 +434,7 @@ var (
 )
 
 type listMediaRequest struct {
+	MediaType           string                  `json:"mediaType,omitempty"`
 	Page                *int                    `json:"page,omitempty"`
 	Search              *string                 `json:"search,omitempty"`
 	PerPage             *int                    `json:"perPage,omitempty"`
@@ -488,6 +489,7 @@ func (h *Handler) HandleListMedia(c echo.Context) error {
 		p.CountryOfOrigin,
 	)
 
+	cacheKey = p.MediaType + ":" + cacheKey
 	cached, ok := simklListAnimeCache.Get(cacheKey)
 	if ok {
 		return h.RespondWithData(c, cached)
@@ -556,6 +558,18 @@ func (h *Handler) listMediaViaSimklREST(ctx context.Context, request listMediaRe
 	page := intValue(request.Page, 1)
 	perPage := intValue(request.PerPage, 20)
 	kinds := mediaKindsForFormat(request.Format)
+	if request.MediaType != "" {
+		switch request.MediaType {
+		case "movies":
+			kinds = []simklapi.MediaType{simklapi.MediaTypeMovies}
+		case "shows":
+			kinds = []simklapi.MediaType{simklapi.MediaTypeShows}
+		case "anime":
+			kinds = []simklapi.MediaType{simklapi.MediaTypeAnime}
+		default:
+			return nil, errors.New("invalid SIMKL media type")
+		}
+	}
 	term := ""
 	if request.Search != nil {
 		term = strings.TrimSpace(*request.Search)
@@ -830,7 +844,7 @@ func (h *Handler) enrichDiscoveryMediaDetails(
 	items []simklapi.DiscoveryMedia,
 	request listMediaRequest,
 ) []simklapi.DiscoveryMedia {
-	if client == nil || len(items) == 0 || !requestNeedsDiscoveryDetails(request) {
+	if client == nil || len(items) == 0 {
 		return items
 	}
 
@@ -1625,6 +1639,22 @@ func sortDiscoveryMedia(items []simklapi.DiscoveryMedia, sorts []*mediaapi.Media
 	}
 	sortKey := strings.ToUpper(string(*sorts[0]))
 	switch sortKey {
+	case "TITLE_ENGLISH", "TITLE_ROMAJI", "TITLE_ENGLISH_DESC", "TITLE_ROMAJI_DESC":
+		sort.SliceStable(items, func(i, j int) bool {
+			left := strings.ToLower(items[i].Media.Title)
+			right := strings.ToLower(items[j].Media.Title)
+			if media := simklapi.ToBaseAnime(items[i].Kind, &items[i].Media); media != nil {
+				left = strings.ToLower(media.GetPreferredTitle())
+			}
+			if media := simklapi.ToBaseAnime(items[j].Kind, &items[j].Media); media != nil {
+				right = strings.ToLower(media.GetPreferredTitle())
+			}
+			if strings.HasSuffix(sortKey, "_DESC") {
+				return left > right
+			}
+			return left < right
+		})
+		return true
 	case "SCORE_DESC", "AVERAGE_SCORE_DESC":
 		sort.SliceStable(items, func(i, j int) bool {
 			return simklRatingScore(items[i]) > simklRatingScore(items[j])
@@ -1750,20 +1780,51 @@ func (h *Handler) HandleListMissedSequels(c echo.Context) error {
 		return h.RespondWithData(c, cached)
 	}
 
-	// Get complete anime collection
-	animeCollection, err := h.App.MediaPlatformRef.Get().GetMediaCollectionWithRelations(c.Request().Context())
+	animeCollection, err := h.App.GetMediaCollection(false)
 	if err != nil {
 		return h.RespondWithError(c, err)
 	}
 
-	ret, err := mediaapi.ListMissedSequels(
-		h.App.MediaPlatformRef.Get().GetMediaApiClient(),
-		animeCollection,
-		h.App.Logger,
-		h.App.GetUserSimklToken(),
-	)
-	if err != nil {
-		return h.RespondWithError(c, err)
+	saved := make(map[int]bool)
+	for _, media := range animeCollection.GetAllAnime() {
+		saved[media.ID] = true
+	}
+	// Summary relations are not included in SIMKL watchlist records.
+	jobs := make(chan simklapi.DiscoveryMedia)
+	var workers sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			for item := range jobs {
+				if details, ok := h.discoveryMediaDetails(c.Request().Context(), h.App.SimklClientRef.Get(), item); ok {
+					simklapi.ToBaseAnime(details.Kind, &details.Media)
+				}
+			}
+		}()
+	}
+	for _, media := range animeCollection.GetAllAnime() {
+		if cached, ok := simklapi.CachedDiscoveryMedia(media.ID); ok && cached.Kind == simklapi.MediaTypeAnime && cached.Media.Relations == nil {
+			jobs <- cached
+		}
+	}
+	close(jobs)
+	workers.Wait()
+	ret := make([]*mediaapi.BaseAnime, 0)
+	seen := make(map[int]bool)
+	for _, media := range animeCollection.GetAllAnime() {
+		cached, ok := simklapi.CachedDiscoveryMedia(media.ID)
+		if !ok {
+			continue
+		}
+		for _, relation := range cached.Media.Relations {
+			id := relation.IDs.PrimarySimklID()
+			if !strings.EqualFold(relation.RelationType, "sequel") || id == 0 || saved[id] || seen[id] {
+				continue
+			}
+			seen[id] = true
+			ret = append(ret, simklapi.ToBaseAnime(cached.Kind, &relation.StandardMedia))
+		}
 	}
 
 	simklMissedSequelsCache.SetT(1, ret, time.Hour*4)

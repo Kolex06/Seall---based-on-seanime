@@ -116,6 +116,7 @@ export type DeleteMediaListEntry_Variables = {
  * Route returns a list of anime based on the search parameters.
  */
 export type ListMedia_Variables = {
+    mediaType?: "movies" | "shows" | "anime"
     page?: number
     search?: string
     perPage?: number

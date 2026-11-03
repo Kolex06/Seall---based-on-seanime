@@ -2,6 +2,7 @@ package simkl
 
 import (
 	"fmt"
+	"html"
 	"seall/internal/api/mediaapi"
 	"strconv"
 	"strings"
@@ -141,6 +142,7 @@ func ToBaseAnime(kind MediaType, media *StandardMedia) *mediaapi.BaseAnime {
 			title = firstNonEmpty(cached.Media.EnglishName, cached.Media.TitleEnglish, title)
 		}
 	}
+	title = html.UnescapeString(title)
 	siteURL := simklSiteURL(kind, media)
 	mediaType := mediaapi.MediaTypeAnime
 	format := toSIMKLFormat(kind, media)

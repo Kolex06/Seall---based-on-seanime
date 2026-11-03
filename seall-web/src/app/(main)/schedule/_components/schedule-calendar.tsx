@@ -47,6 +47,7 @@ export const calendarParamsAtom = atomWithStorage<CalendarParams>("sea-release-c
 type ScheduleCalendarProps = {
     children?: React.ReactNode
     items?: Media_ScheduleItem[]
+    source?: ScheduleSource
 }
 
 type ScheduleItem = Media_ScheduleItem & {
@@ -66,7 +67,7 @@ export function ScheduleCalendar(props: ScheduleCalendarProps) {
     const simklListData = useAtomValue(__simkl_userAnimeListDataAtom)
 
     const [calendarParams, setCalendarParams] = useImmerAtom(calendarParamsAtom)
-    const scheduleSource = calendarParams.source ?? DEFAULT_CALENDAR_SOURCE
+    const scheduleSource = props.source ?? calendarParams.source ?? DEFAULT_CALENDAR_SOURCE
 
     const { data: _schedule, isLoading: scheduleLoading } = useGetMediaCollectionSchedule({ enabled: !items, source: scheduleSource })
     const schedule = (items ?? _schedule) as ScheduleItem[] | undefined

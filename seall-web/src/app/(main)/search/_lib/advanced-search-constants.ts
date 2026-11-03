@@ -69,10 +69,10 @@ export const ADVANCED_SEARCH_SEASONS = [
     "Fall",
 ]
 
-export const ADVANCED_SEARCH_FORMATS: { value: MediaAPI_MediaFormat, label: string }[] = [
+export const ADVANCED_SEARCH_FORMATS: { value: MediaAPI_MediaFormat | "ANIME", label: string }[] = [
     { value: "TV", label: "Series" },
-    { value: "MOVIE", label: "Movie" },
-    { value: "SPECIAL", label: "Special" },
+    { value: "MOVIE", label: "Movies" },
+    { value: "ANIME", label: "Anime" },
 ]
 
 export const ADVANCED_SEARCH_FORMATS_MANGA: { value: MediaAPI_MediaFormat, label: string }[] = [

@@ -342,7 +342,7 @@ export function DebridStreamPage(props: DebridStreamPageProps) {
                     {episodeCollection?.hasMappingError && (
                         <div data-debrid-stream-page-no-metadata-message-container>
                             <p className="text-red-200 opacity-50">
-                                No metadata info available for this anime. You may need to manually select the file to stream.
+                                Episode details are unavailable from SIMKL. You may need to select the video file manually.
                             </p>
                         </div>
 

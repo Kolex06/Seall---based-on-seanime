@@ -227,7 +227,7 @@ export function useHandleLibraryCollection() {
         list = sortContinueWatchingEntries(list, continueWatchingDefaultSorting as any, entries, watchHistory)
 
         if (!serverStatus?.settings?.simkl?.enableAdultContent || serverStatus?.settings?.simkl?.blurAdultContent) {
-            return list.filter(entry => entry.baseAnime?.isAdult === false)
+            return list.filter(entry => entry.baseAnime?.isAdult !== true)
         }
 
         return list

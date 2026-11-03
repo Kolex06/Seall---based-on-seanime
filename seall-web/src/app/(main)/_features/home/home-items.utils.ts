@@ -1,5 +1,6 @@
 import { Models_HomeItem, Nullish } from "@/api/generated/types"
 import { ADVANCED_SEARCH_COUNTRIES_MANGA, ADVANCED_SEARCH_MEDIA_GENRES } from "@/app/(main)/search/_lib/advanced-search-constants"
+import { SIMKL_DISCOVER_GENRES } from "@/app/(main)/discover/_lib/simkl-discover-genres"
 
 export const DEFAULT_HOME_ITEMS: Models_HomeItem[] = [
     {
@@ -70,7 +71,7 @@ const _carouselOptions = [
             },
             {
                 label: "Romaji Title (A-Z)",
-                value: "TITLE_ROMAJI_ASC",
+                value: "TITLE_ROMAJI",
             },
             {
                 label: "Romaji Title (Z-A)",
@@ -78,7 +79,7 @@ const _carouselOptions = [
             },
             {
                 label: "English title (A-Z)",
-                value: "TITLE_ENGLISH_ASC",
+                value: "TITLE_ENGLISH",
             },
             {
                 label: "English title (Z-A)",
@@ -119,31 +120,23 @@ const _carouselOptions = [
         name: "format",
         options: [
             {
-                label: "TV",
+                label: "Series",
                 value: "TV",
             },
             {
-                label: "Movie",
+                label: "Movies",
                 value: "MOVIE",
             },
             {
-                label: "OVA",
-                value: "OVA",
-            },
-            {
-                label: "ONA",
-                value: "ONA",
-            },
-            {
-                label: "Special",
-                value: "SPECIAL",
+                label: "Anime",
+                value: "ANIME",
             },
         ],
     },
     {
         label: "Genres",
         type: "multi-select",
-        options: ADVANCED_SEARCH_MEDIA_GENRES.map(n => ({ value: n, label: n })),
+        options: SIMKL_DISCOVER_GENRES.map(n => ({ value: n, label: n })),
         name: "genres",
     },
     {

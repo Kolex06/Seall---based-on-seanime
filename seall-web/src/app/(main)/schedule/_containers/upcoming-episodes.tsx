@@ -22,9 +22,9 @@ export function UpcomingEpisodes() {
 
     const { data: animeCollection } = useGetMediaCollection()
 
-    const { data } = useGetUpcomingEpisodes()
+    const { data, isLoading, isError } = useGetUpcomingEpisodes()
 
-    if (!data?.episodes?.length) return null
+    if (!data?.episodes?.length) return <div className="py-4"><h2>Upcoming releases</h2><p className="text-[--muted]">{isLoading ? "Loading releases..." : isError ? "Could not load upcoming releases." : "No upcoming releases in your watchlist."}</p></div>
 
     return (
         <AppLayoutStack>
@@ -59,7 +59,7 @@ export function UpcomingEpisodes() {
                                             isAdult={item.baseAnime?.isAdult}
                                             spoilerMode="replace"
                                             spoilerActive={spoilerActive}
-                                            title={`Episode ${item.episodeNumber}`}
+                                            title={item.baseAnime?.format === "MOVIE" ? "Movie release" : `Episode ${item.episodeNumber}`}
                                             meta={formatDistanceToNow(addSeconds(new Date(), item.timeUntilAiring!),
                                                 { addSuffix: true })}
                                             imageClass="opacity-50"

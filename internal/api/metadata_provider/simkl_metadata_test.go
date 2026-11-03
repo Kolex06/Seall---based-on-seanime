@@ -7,6 +7,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestBuildSimklMovieMetadataUsesMovieSummary(t *testing.T) {
+	ret := buildSimklMovieMetadata(987654323, &simkl.StandardMedia{Title: "Test Movie", Overview: "Movie overview", IDs: simkl.IDs{Simkl: 987654323}, Fanart: "12/123", Released: "2026-12-01"})
+	require.Equal(t, 1, ret.EpisodeCount)
+	require.Equal(t, "movie", ret.Mappings.Type)
+	require.Equal(t, "Test Movie", ret.Episodes["1"].Title)
+	require.Equal(t, "Movie overview", ret.Episodes["1"].Overview)
+	require.NotEmpty(t, ret.Episodes["1"].Image)
+}
+
 func TestBuildSimklAnimeMetadataUsesEpisodeImages(t *testing.T) {
 	metadata := buildSimklAnimeMetadata(2529412, []simkl.Episode{
 		{

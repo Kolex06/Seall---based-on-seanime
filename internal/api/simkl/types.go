@@ -106,28 +106,34 @@ type Ratings struct {
 }
 
 type StandardMedia struct {
-	Title         string      `json:"title,omitempty"`
-	Year          int         `json:"year,omitempty"`
-	Type          string      `json:"type,omitempty"`
-	Status        string      `json:"status,omitempty"`
-	To            WatchStatus `json:"to,omitempty"`
-	Rating        *int        `json:"rating,omitempty"`
-	AddedAt       string      `json:"added_at,omitempty"`
-	WatchedAt     string      `json:"watched_at,omitempty"`
-	Poster        string      `json:"poster,omitempty"`
-	Fanart        string      `json:"fanart,omitempty"`
-	URL           string      `json:"url,omitempty"`
-	Runtime       *int        `json:"runtime,omitempty"`
-	Overview      string      `json:"overview,omitempty"`
-	Genres        []string    `json:"genres,omitempty"`
-	Country       string      `json:"country,omitempty"`
-	Released      string      `json:"released,omitempty"`
-	TotalEpisodes *int        `json:"total_episodes,omitempty"`
-	AnimeType     string      `json:"anime_type,omitempty"`
-	EnglishName   string      `json:"en_title,omitempty"`
-	TitleEnglish  string      `json:"title_en,omitempty"`
-	IDs           IDs         `json:"ids,omitempty"`
-	Ratings       Ratings     `json:"ratings,omitempty"`
+	Title         string         `json:"title,omitempty"`
+	Year          int            `json:"year,omitempty"`
+	Type          string         `json:"type,omitempty"`
+	Status        string         `json:"status,omitempty"`
+	To            WatchStatus    `json:"to,omitempty"`
+	Rating        *int           `json:"rating,omitempty"`
+	AddedAt       string         `json:"added_at,omitempty"`
+	WatchedAt     string         `json:"watched_at,omitempty"`
+	Poster        string         `json:"poster,omitempty"`
+	Fanart        string         `json:"fanart,omitempty"`
+	URL           string         `json:"url,omitempty"`
+	Runtime       *int           `json:"runtime,omitempty"`
+	Overview      string         `json:"overview,omitempty"`
+	Genres        []string       `json:"genres,omitempty"`
+	Country       string         `json:"country,omitempty"`
+	Released      string         `json:"released,omitempty"`
+	TotalEpisodes *int           `json:"total_episodes,omitempty"`
+	AnimeType     string         `json:"anime_type,omitempty"`
+	EnglishName   string         `json:"en_title,omitempty"`
+	TitleEnglish  string         `json:"title_en,omitempty"`
+	IDs           IDs            `json:"ids,omitempty"`
+	Ratings       Ratings        `json:"ratings,omitempty"`
+	Relations     []RelatedMedia `json:"relations,omitempty"`
+}
+
+type RelatedMedia struct {
+	StandardMedia
+	RelationType string `json:"relation_type"`
 }
 
 type Episode struct {

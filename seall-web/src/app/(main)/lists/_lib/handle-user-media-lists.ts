@@ -20,7 +20,7 @@ export const __myListsSearch_paramsInputAtom = atomWithImmer<CollectionParams<"a
 
 export const __myLists_selectedTypeAtom = atomWithImmer<"anime" | "manga" | "stats">("anime")
 
-export function useHandleUserMediaLists(debouncedSearchInput: string, type?: "anime" | "manga") {
+export function useHandleUserMediaLists(debouncedSearchInput: string, type?: "anime" | "manga", isolated = false) {
     void type
 
     const serverStatus = useServerStatus()
@@ -56,7 +56,7 @@ export function useHandleUserMediaLists(debouncedSearchInput: string, type?: "an
             const arr = filterListEntries(
                 "anime" as CollectionType,
                 obj?.entries,
-                params,
+                isolated ? MYLISTS_DEFAULT_PARAMS : params,
                 serverStatus?.settings?.simkl?.enableAdultContent,
                 mediaTagMap,
             )
@@ -67,7 +67,7 @@ export function useHandleUserMediaLists(debouncedSearchInput: string, type?: "an
                 entries: arr,
             }
         }).filter(Boolean) ?? []
-    }, [lists, debouncedParams, mediaTagMap, serverStatus?.settings?.simkl?.enableAdultContent])
+    }, [lists, debouncedParams, mediaTagMap, serverStatus?.settings?.simkl?.enableAdultContent, isolated])
 
     const filteredLists: MediaAPI_MediaCollection_MediaListCollection_Lists[] = React.useMemo(() => {
         return _filteredLists?.map(obj => {

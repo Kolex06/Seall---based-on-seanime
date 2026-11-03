@@ -158,7 +158,7 @@ export function TorrentStreamEpisodeSection(props: TorrentStreamEpisodeSectionPr
                                 episode={episode}
                                 image={episode.episodeMetadata?.image || episode.baseAnime?.bannerImage || episode.baseAnime?.coverImage?.extraLarge}
                                 topTitle={episode.episodeTitle || episode?.baseAnime?.title?.userPreferred}
-                                title={episode.displayTitle}
+                                title={entry.media?.format === "MOVIE" ? "Movie" : episode.displayTitle}
                                 // meta={episode.episodeMetadata?.airDate ?? undefined}
                                 isInvalid={episode.isInvalid}
                                 progressTotal={episode.baseAnime?.episodes}

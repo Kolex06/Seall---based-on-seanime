@@ -16,6 +16,7 @@ import (
 	"seall/internal/util/result"
 	"slices"
 	"strconv"
+	"time"
 
 	"github.com/labstack/echo/v4"
 	"github.com/samber/lo"
@@ -533,10 +534,28 @@ func (h *Handler) HandleGetUpcomingEpisodes(c echo.Context) error {
 	if err != nil {
 		return h.RespondWithError(c, err)
 	}
-	upcomingEps := anime.NewUpcomingEpisodes(&anime.NewUpcomingEpisodesOptions{
-		AnimeCollection:     animeCollection,
-		MetadataProviderRef: h.App.MetadataProviderRef,
-	})
+	calendarItems, err := h.getSIMKLCalendarItems(c.Request().Context(), time.Now())
+	if err != nil {
+		return h.RespondWithError(c, err)
+	}
+	schedule := anime.GetScheduleItemsFromSIMKLCalendar(calendarItems, animeCollection, false)
+	upcomingEps := &anime.UpcomingEpisodes{Episodes: make([]*anime.UpcomingEpisode, 0)}
+	now := time.Now().Unix()
+	seen := make(map[int]bool)
+	for _, item := range schedule {
+		if item.DateTime.Unix() <= now || seen[item.MediaId] {
+			continue
+		}
+		entry, ok := animeCollection.GetListEntryFromAnimeId(item.MediaId)
+		if !ok || entry.GetMedia() == nil || (entry.Status != nil && *entry.Status == mediaapi.MediaListStatusDropped) {
+			continue
+		}
+		seen[item.MediaId] = true
+		upcomingEps.Episodes = append(upcomingEps.Episodes, &anime.UpcomingEpisode{
+			MediaId: item.MediaId, EpisodeNumber: item.EpisodeNumber,
+			AiringAt: item.DateTime.Unix(), TimeUntilAiring: int(item.DateTime.Unix() - now), BaseAnime: entry.GetMedia(),
+		})
+	}
 
 	event := new(anime.UpcomingEpisodesEvent)
 	event.UpcomingEpisodes = upcomingEps

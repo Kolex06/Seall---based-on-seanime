@@ -266,6 +266,38 @@ func (sp *SimklPlatform) refreshAnimeCollection(ctx context.Context) error {
 		return err
 	}
 
+	// Watchlist records omit English anime titles; summaries supply en_title.
+	jobs := make(chan *simkl.StandardMedia)
+	var titleWorkers sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		titleWorkers.Add(1)
+		go func() {
+			defer titleWorkers.Done()
+			for media := range jobs {
+				id := media.IDs.PrimarySimklID()
+				if cached, ok := simkl.CachedDiscoveryMedia(id); ok {
+					media.EnglishName = cached.Media.EnglishName
+					media.TitleEnglish = cached.Media.TitleEnglish
+				}
+				if media.EnglishName != "" || media.TitleEnglish != "" {
+					continue
+				}
+				details, err := sp.simklClient().MediaDetails(ctx, simkl.MediaTypeAnime, strconv.Itoa(id), "full")
+				if err == nil && details != nil {
+					media.EnglishName = details.EnglishName
+					media.TitleEnglish = details.TitleEnglish
+					media.Relations = details.Relations
+				}
+			}
+		}()
+	}
+	for i := range items.Anime {
+		if media := items.Anime[i].Media(); media != nil && media.IDs.PrimarySimklID() > 0 && media.EnglishName == "" && media.TitleEnglish == "" {
+			jobs <- media
+		}
+	}
+	close(jobs)
+	titleWorkers.Wait()
 	collection := simkl.ToSIMKLAnimeCollection(items)
 	sp.helper.MergeCustomSourceAnimeEntries(collection)
 	raw := cloneAnimeCollection(collection)

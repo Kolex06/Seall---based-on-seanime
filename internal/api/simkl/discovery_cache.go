@@ -26,6 +26,9 @@ func cacheDiscoveryMedia(kind MediaType, media StandardMedia) {
 		if media.TitleEnglish == "" {
 			media.TitleEnglish = cached.Media.TitleEnglish
 		}
+		if media.Relations == nil {
+			media.Relations = cached.Media.Relations
+		}
 	}
 	discoveryMediaCache.Store(id, DiscoveryMedia{
 		Kind:  kind,
