@@ -125,6 +125,7 @@ type StandardMedia struct {
 	TotalEpisodes *int        `json:"total_episodes,omitempty"`
 	AnimeType     string      `json:"anime_type,omitempty"`
 	EnglishName   string      `json:"en_title,omitempty"`
+	TitleEnglish  string      `json:"title_en,omitempty"`
 	IDs           IDs         `json:"ids,omitempty"`
 	Ratings       Ratings     `json:"ratings,omitempty"`
 }

@@ -135,9 +135,11 @@ func ToBaseAnime(kind MediaType, media *StandardMedia) *mediaapi.BaseAnime {
 	if id == 0 {
 		id = stableFallbackID(kind, media.Title, media.Year)
 	}
-	title := media.Title
-	if media.EnglishName != "" {
-		title = media.EnglishName
+	title := firstNonEmpty(strings.TrimSpace(media.EnglishName), strings.TrimSpace(media.TitleEnglish), media.Title)
+	if media.EnglishName == "" && media.TitleEnglish == "" {
+		if cached, ok := CachedDiscoveryMedia(id); ok {
+			title = firstNonEmpty(cached.Media.EnglishName, cached.Media.TitleEnglish, title)
+		}
 	}
 	siteURL := simklSiteURL(kind, media)
 	mediaType := mediaapi.MediaTypeAnime

@@ -16,6 +16,8 @@ type DiscoveryMedia struct {
 type restDiscoveryMedia struct {
 	Title         string          `json:"title,omitempty"`
 	TitleRomaji   string          `json:"title_romaji,omitempty"`
+	EnglishName   string          `json:"en_title,omitempty"`
+	TitleEnglish  string          `json:"title_en,omitempty"`
 	Year          int             `json:"year,omitempty"`
 	EndpointType  string          `json:"endpoint_type,omitempty"`
 	Type          string          `json:"type,omitempty"`
@@ -149,7 +151,7 @@ func toDiscoveryMedia(fallback MediaType, items []restDiscoveryMedia) []Discover
 			Country:       item.Country,
 			Released:      released,
 			AnimeType:     item.AnimeType,
-			EnglishName:   title,
+			EnglishName:   firstNonEmpty(item.EnglishName, item.TitleEnglish),
 			IDs:           ids,
 			Ratings:       item.Ratings,
 			TotalEpisodes: totalEpisodes,

@@ -19,17 +19,19 @@ type CalendarEpisode struct {
 }
 
 type CalendarItem struct {
-	Kind        MediaType        `json:"-"`
-	Title       string           `json:"title,omitempty"`
-	Year        int              `json:"year,omitempty"`
-	Date        string           `json:"date,omitempty"`
-	ReleaseDate string           `json:"release_date,omitempty"`
-	Poster      string           `json:"poster,omitempty"`
-	Fanart      string           `json:"fanart,omitempty"`
-	URL         string           `json:"url,omitempty"`
-	IDs         IDs              `json:"ids,omitempty"`
-	Episode     *CalendarEpisode `json:"episode,omitempty"`
-	AnimeType   string           `json:"anime_type,omitempty"`
+	Kind         MediaType        `json:"-"`
+	Title        string           `json:"title,omitempty"`
+	EnglishName  string           `json:"en_title,omitempty"`
+	TitleEnglish string           `json:"title_en,omitempty"`
+	Year         int              `json:"year,omitempty"`
+	Date         string           `json:"date,omitempty"`
+	ReleaseDate  string           `json:"release_date,omitempty"`
+	Poster       string           `json:"poster,omitempty"`
+	Fanart       string           `json:"fanart,omitempty"`
+	URL          string           `json:"url,omitempty"`
+	IDs          IDs              `json:"ids,omitempty"`
+	Episode      *CalendarEpisode `json:"episode,omitempty"`
+	AnimeType    string           `json:"anime_type,omitempty"`
 }
 
 func DiscoveryMediaFromCalendarItems(items []CalendarItem) []DiscoveryMedia {
@@ -65,7 +67,7 @@ func DiscoveryMediaFromCalendarItems(items []CalendarItem) []DiscoveryMedia {
 			URL:           mediaURL,
 			Released:      released,
 			AnimeType:     item.AnimeType,
-			EnglishName:   title,
+			EnglishName:   firstNonEmpty(item.EnglishName, item.TitleEnglish),
 			IDs:           ids,
 			TotalEpisodes: totalEpisodes,
 		}

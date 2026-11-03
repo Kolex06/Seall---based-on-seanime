@@ -19,6 +19,14 @@ func cacheDiscoveryMedia(kind MediaType, media StandardMedia) {
 	if media.IDs.Simkl == 0 {
 		media.IDs.Simkl = id
 	}
+	if cached, ok := CachedDiscoveryMedia(id); ok && cached.Kind == kind {
+		if media.EnglishName == "" {
+			media.EnglishName = cached.Media.EnglishName
+		}
+		if media.TitleEnglish == "" {
+			media.TitleEnglish = cached.Media.TitleEnglish
+		}
+	}
 	discoveryMediaCache.Store(id, DiscoveryMedia{
 		Kind:  kind,
 		Media: media,

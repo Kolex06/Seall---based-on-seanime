@@ -935,6 +935,9 @@ func requestNeedsDiscoveryDetails(request listMediaRequest) bool {
 }
 
 func discoveryMediaNeedsDetails(item simklapi.DiscoveryMedia, request listMediaRequest) bool {
+	if item.Kind == simklapi.MediaTypeAnime && strings.TrimSpace(item.Media.EnglishName) == "" && strings.TrimSpace(item.Media.TitleEnglish) == "" {
+		return true
+	}
 	if len(simklGenreFilters(request.Genres, request.Tags)) > 0 && len(item.Media.Genres) == 0 {
 		return true
 	}
@@ -1076,6 +1079,9 @@ func mergeSIMKLStandardMedia(fallback simklapi.StandardMedia, detailed simklapi.
 	}
 	if detailed.EnglishName == "" {
 		detailed.EnglishName = fallback.EnglishName
+	}
+	if detailed.TitleEnglish == "" {
+		detailed.TitleEnglish = fallback.TitleEnglish
 	}
 	detailed.IDs = mergeSIMKLIDs(fallback.IDs, detailed.IDs)
 	detailed.Ratings = mergeSIMKLRatings(fallback.Ratings, detailed.Ratings)
