@@ -136,6 +136,22 @@ type RelatedMedia struct {
 	RelationType string `json:"relation_type"`
 }
 
+func (r *RelatedMedia) UnmarshalJSON(data []byte) error {
+	var media StandardMedia
+	if err := json.Unmarshal(data, &media); err != nil {
+		return err
+	}
+	var relation struct {
+		Type string `json:"relation_type"`
+	}
+	if err := json.Unmarshal(data, &relation); err != nil {
+		return err
+	}
+	r.StandardMedia = media
+	r.RelationType = relation.Type
+	return nil
+}
+
 type Episode struct {
 	Number      int    `json:"number,omitempty"`
 	Episode     int    `json:"episode,omitempty"`
