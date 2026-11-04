@@ -37,7 +37,7 @@ func LoadExtensions(extensionRepository *extension_repo.Repository, logger *zero
 	extensionRepository.ReloadBuiltInExtension(extension.Extension{
 		ID:          "custom-css-manager",
 		Name:        "Custom CSS Manager",
-		Version:     "1.0.10",
+		Version:     "1.0.11",
 		ManifestURI: "builtin",
 		Language:    extension.LanguageTypescript,
 		Type:        extension.TypePlugin,

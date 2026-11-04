@@ -1,4 +1,4 @@
-﻿
+
 //@ts-ignore
 function init() {
 	$ui.register((ctx) => {
@@ -7,7 +7,7 @@ function init() {
 
 		const seallDefaultStyles: $cssm.Storage = [
     {
-        "name":  "Clean Sidebar - fits seanime good",
+        "name":  "Clean Sidebar - fits Seall good",
         "author":  "Kolex06",
         "uuid":  "bbc478d0-6ff8-413a-999b-cd987a38b338",
         "enabled":  true,
@@ -23,7 +23,7 @@ function init() {
         "uuid":  "3a8b6d93-e45f-415d-98d6-64c24b20bad6",
         "enabled":  true,
         "style":  {
-                      "desktop":  "/*Seanime compact grid card (6) */\n[data-episode-list-grid] {\n\tgrid-template-columns: repeat(6, minmax(0, 1fr));\n\tdisplay: grid !important;\n}\n\n[data-episode-grid-item-image-container] {\n\tborder-radius: 4px;\n\twidth: 100%;\n}\n\n[data-episode-grid-item-image-overlay] {\n\tbox-shadow: inset 0 0 12px rgba(0, 0, 0, 0.5);\n}\n\n[data-episode-grid-item-content] {\n\tdisplay: grid;\n\tposition: absolute;\n\tbottom: 2px;\n\tright: 4px;\n\ttext-shadow: 0px 0px 3px rgb(0,0,0), 0px 0px 1px rgb(255,255,255);\n}\n\n[data-episode-grid-item-episode-title] {\n\tfont-size: 0.9rem !important;\n\tbottom: 2px;\n\tright: 4px;\n\ttext-align: right;\n\ttext-wrap: balance;\n}\n\n[data-episode-grid-item-title] {\n\tfont-size: 0.9rem;\n\tbottom: 2px;\n\tright: 2px;\n\ttext-align: right;\n}\n\n[data-episode-grid-item-episode-description],\n[data-episode-grid-item-filename] {\n\tdisplay: none !important;\n}",
+                      "desktop":  "/*Seall compact grid card (6) */\n[data-episode-list-grid] {\n\tgrid-template-columns: repeat(6, minmax(0, 1fr));\n\tdisplay: grid !important;\n}\n\n[data-episode-grid-item-image-container] {\n\tborder-radius: 4px;\n\twidth: 100%;\n}\n\n[data-episode-grid-item-image-overlay] {\n\tbox-shadow: inset 0 0 12px rgba(0, 0, 0, 0.5);\n}\n\n[data-episode-grid-item-content] {\n\tdisplay: grid;\n\tposition: absolute;\n\tbottom: 2px;\n\tright: 4px;\n\ttext-shadow: 0px 0px 3px rgb(0,0,0), 0px 0px 1px rgb(255,255,255);\n}\n\n[data-episode-grid-item-episode-title] {\n\tfont-size: 0.9rem !important;\n\tbottom: 2px;\n\tright: 4px;\n\ttext-align: right;\n\ttext-wrap: balance;\n}\n\n[data-episode-grid-item-title] {\n\tfont-size: 0.9rem;\n\tbottom: 2px;\n\tright: 2px;\n\ttext-align: right;\n}\n\n[data-episode-grid-item-episode-description],\n[data-episode-grid-item-filename] {\n\tdisplay: none !important;\n}",
                       "mobile":  ""
                   },
         "link":  "https://discord.com/channels/1224767201551192224/1410580738176319508"
@@ -233,6 +233,10 @@ function init() {
 				this.updateCSS();
 			},
 			seedSeallDefaultStyles() {
+				const renamed = this.storage.map((style) => ({ ...style, name: style.name.replace(/\bseanime\b/gi, "Seall") }));
+				if (renamed.some((style, index) => style.name !== this.storage[index].name)) {
+					$storage.set(this.id, renamed);
+				}
 				const seedKey = `${this.id}:seall-defaults-seeded`;
 				if ($storage.get(seedKey)) return;
 
@@ -252,7 +256,7 @@ function init() {
 					);
 
 					if (!res.ok) throw new Error(res.statusText);
-					const community: $cssm.Storage = res.json();
+					const community: $cssm.Storage = res.json().map((style: $cssm.Style) => ({ ...style, name: style.name.replace(/\bseanime\b/gi, "Seall") }));
 					const data = [
 						...seallDefaultStyles,
 						...community.filter((style) => !seallDefaultStyles.some((preset) => preset.uuid.toString() === style.uuid.toString())),
@@ -362,7 +366,7 @@ function init() {
 						filter: grayscale(100%);
 					}
 					.hover\\:grayscale-0:hover {
-						filter: grayscale(0%);	
+						filter: grayscale(0%);
 					}
 				`);
 			},
