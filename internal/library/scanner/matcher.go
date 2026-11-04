@@ -450,6 +450,10 @@ func (m *Matcher) matchLocalFile(lf *anime.LocalFile) {
 		mediaSeason, mediaSeasonExplicit, mediaSeasonConfidence := getMediaSeason(media, normalizedMediaTitles)
 		mediaPart, mediaPartExplicit := getMediaPart(normalizedMediaTitles)
 		seasonPartScore := calculateSeasonPartScore(fileSeason, filePart, mediaSeason, mediaSeasonExplicit, mediaSeasonConfidence, mediaPart, mediaPartExplicit)
+		if media.IsSeries {
+			// A SIMKL show contains all seasons, unlike season-specific anime entries.
+			seasonPartScore = 0
+		}
 		currentScore += seasonPartScore
 
 		// 3. Year comparison

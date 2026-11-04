@@ -54,6 +54,7 @@ type (
 		EpisodeNumber         int    `json:"episodeNumber"`
 		Episode               string `json:"episode"`
 		SeasonNumber          int    `json:"seasonNumber"`
+		SeasonEpisodeNumber   int    `json:"seasonEpisodeNumber,omitempty"`
 		AbsoluteEpisodeNumber int    `json:"absoluteEpisodeNumber"`
 		AnidbEid              int    `json:"anidbEid"`
 		HasImage              bool   `json:"hasImage"` // Indicates if the episode has a real image

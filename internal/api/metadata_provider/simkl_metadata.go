@@ -7,6 +7,7 @@ import (
 	"seall/internal/api/animap"
 	"seall/internal/api/metadata"
 	"seall/internal/api/simkl"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -35,6 +36,9 @@ func (p *ProviderImpl) fetchSimklEpisodeMetadata(ctx context.Context, mId int) (
 		if len(episodes) == 0 {
 			lastErr = fmt.Errorf("simkl: no episode metadata returned for %d", mId)
 			continue
+		}
+		if kind == simkl.MediaTypeShows {
+			return buildSimklShowMetadata(mId, episodes), nil
 		}
 		return buildSimklAnimeMetadata(mId, episodes), nil
 	}
@@ -118,8 +122,12 @@ func buildSimklAnimeMetadata(mId int, episodes []simkl.Episode) *metadata.AnimeM
 		image := simkl.ImageURL(simkl.ImageKindEpisode, ep.Image, simkl.ImageSizeEpisodeWide)
 		overview := strings.ReplaceAll(ep.Description, "`", "'")
 		seasonNumber := ep.Season
+		seasonEpisodeNumber := episodeNumber
 		if seasonNumber == 0 && ep.TVDB != nil {
 			seasonNumber = ep.TVDB.Season
+		}
+		if ep.TVDB != nil && ep.TVDB.Episode > 0 {
+			seasonEpisodeNumber = ep.TVDB.Episode
 		}
 
 		ret.Episodes[key] = &metadata.EpisodeMetadata{
@@ -134,12 +142,52 @@ func buildSimklAnimeMetadata(mId int, episodes []simkl.Episode) *metadata.AnimeM
 			EpisodeNumber:         displayEpisodeNumber,
 			Episode:               key,
 			SeasonNumber:          seasonNumber,
+			SeasonEpisodeNumber:   seasonEpisodeNumber,
 			AbsoluteEpisodeNumber: displayEpisodeNumber,
 			AnidbEid:              0,
 			HasImage:              image != "",
 		}
 	}
 
+	return ret
+}
+
+func buildSimklShowMetadata(mId int, episodes []simkl.Episode) *metadata.AnimeMetadata {
+	// SIMKL can return seasons out of order. Keep the input untouched for other consumers.
+	ordered := append([]simkl.Episode(nil), episodes...)
+	season := func(ep simkl.Episode) int {
+		if ep.Season == 0 && ep.TVDB != nil {
+			return ep.TVDB.Season
+		}
+		return ep.Season
+	}
+	number := func(ep simkl.Episode) int {
+		if ep.TVDB != nil && ep.TVDB.Episode > 0 {
+			return ep.TVDB.Episode
+		}
+		return simklEpisodeNumber(ep)
+	}
+	for i := range ordered {
+		if strings.EqualFold(ordered[i].Type, "special") || (ordered[i].TVDB != nil && ordered[i].TVDB.Season == 0) {
+			ordered[i].Episode = number(ordered[i])
+		}
+		if season(ordered[i]) == 0 && (strings.EqualFold(ordered[i].Type, "special") || ordered[i].TVDB != nil) {
+			ordered[i].Type = "special"
+		}
+	}
+	sort.SliceStable(ordered, func(i, j int) bool {
+		if season(ordered[i]) != season(ordered[j]) {
+			return season(ordered[i]) < season(ordered[j])
+		}
+		return number(ordered[i]) < number(ordered[j])
+	})
+	ret := buildSimklAnimeMetadata(mId, ordered)
+	for key, ep := range ret.Episodes {
+		if strings.HasPrefix(key, "S") {
+			ep.SeasonNumber = 0
+		}
+	}
+	ret.Mappings.Type = "tv"
 	return ret
 }
 

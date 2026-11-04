@@ -206,6 +206,21 @@ func (fh *FileHydrator) hydrateGroupMetadata(
 			}
 		}
 
+		if media.IsSeries {
+			var episodeMetadata *metadata.AnimeMetadata
+			if fh.MetadataProviderRef != nil {
+				episodeMetadata, _ = fh.MetadataProviderRef.Get().GetAnimeMetadata(metadata.MediaPlatform, mId)
+			}
+			if !hydrateSIMKLSeriesEpisode(lf, episodeMetadata) {
+				lf.MediaId = 0
+				lf.Metadata = &anime.LocalFileMetadata{}
+				fh.ScanSummaryLogger.LogDebug(lf, "SIMKL season/episode mapping missing or ambiguous; left unmatched")
+			} else {
+				episode = lf.Metadata.Episode
+			}
+			return
+		}
+
 		// NC metadata
 		if lf.IsProbablyNC() {
 			lf.Metadata.Episode = 0

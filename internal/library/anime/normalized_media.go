@@ -2,6 +2,7 @@ package anime
 
 import (
 	"context"
+	"net/url"
 	"seall/internal/api/mediaapi"
 	"seall/internal/util/comparison"
 	"seall/internal/util/limiter"
@@ -12,6 +13,7 @@ import (
 
 type NormalizedMedia struct {
 	ID          int
+	IsSeries    bool
 	IdMal       *int
 	Title       *NormalizedMediaTitle
 	Synonyms    []*string
@@ -60,6 +62,8 @@ type NormalizedMediaCache struct {
 }
 
 func NewNormalizedMedia(m *mediaapi.BaseAnime) *NormalizedMedia {
+	seriesURL, _ := url.Parse(lo.FromPtr(m.GetSiteURL()))
+	isSeries := seriesURL != nil && seriesURL.Hostname() == "simkl.com" && len(seriesURL.Path) >= 4 && seriesURL.Path[:4] == "/tv/"
 	var startDate *NormalizedMediaDate
 	if m.GetStartDate() != nil {
 		startDate = &NormalizedMediaDate{
@@ -100,6 +104,7 @@ func NewNormalizedMedia(m *mediaapi.BaseAnime) *NormalizedMedia {
 
 	return &NormalizedMedia{
 		ID:                m.GetID(),
+		IsSeries:          isSeries,
 		IdMal:             m.GetIDMal(),
 		Title:             title,
 		Synonyms:          m.GetSynonyms(),
