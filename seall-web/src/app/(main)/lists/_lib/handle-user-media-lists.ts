@@ -25,7 +25,7 @@ export function useHandleUserMediaLists(debouncedSearchInput: string, type?: "an
 
     const serverStatus = useServerStatus()
     const [selectedType, setSelectedType] = useAtom(__myLists_selectedTypeAtom)
-    const { data: animeData } = useGetRawMediaCollection()
+    const { data: animeData, isLoading } = useGetRawMediaCollection()
     const { data: animeTagMap } = useGetRawMediaCollectionTags()
 
     const data = React.useMemo(() => {
@@ -87,6 +87,7 @@ export function useHandleUserMediaLists(debouncedSearchInput: string, type?: "an
     }, [filteredLists])
 
     return {
+        isLoading,
         currentList: React.useMemo(() => filteredLists?.find(l => l?.status === "CURRENT"), [filteredLists]),
         repeatingList: React.useMemo(() => filteredLists?.find(l => l?.status === "REPEATING"), [filteredLists]),
         planningList: React.useMemo(() => filteredLists?.find(l => l?.status === "PLANNING"), [filteredLists]),

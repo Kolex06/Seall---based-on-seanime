@@ -20,6 +20,7 @@ import { SimklMediaEntryList } from "@/app/(main)/_features/anime/_components/me
 import { DEFAULT_HOME_ITEMS, HOME_ITEMS, isAnimeLibraryItemsOnly } from "@/app/(main)/_features/home/home-items.utils"
 import { __home_settingsModalOpen, HomeSettingsModal } from "@/app/(main)/_features/home/home-settings-modal"
 import { HomeToolbar } from "@/app/(main)/_features/home/home-toolbar"
+import { useHomeContinueWatching } from "@/app/(main)/_features/home/home-continue-watching"
 import { PluginWebviewSlot } from "@/app/(main)/_features/plugin/webview/plugin-webviews"
 import { DiscoverMissedSequelsSection } from "@/app/(main)/discover/_containers/discover-missed-sequels"
 import { useHandleUserMediaLists } from "@/app/(main)/lists/_lib/handle-user-media-lists"
@@ -73,7 +74,7 @@ export function HomeScreen() {
         libraryCollectionList,
         filteredLibraryCollectionList,
         isLoading,
-        continueWatchingList,
+        continueWatchingList: playbackContinueWatchingList,
         unmatchedLocalFiles,
         ignoredLocalFiles,
         unmatchedGroups,
@@ -83,6 +84,8 @@ export function HomeScreen() {
         isStreamingOnly,
         isNakamaLibrary,
     } = useHandleLibraryCollection()
+
+    const continueWatchingList = useHomeContinueWatching(playbackContinueWatchingList)
 
     const {
         mangaCollection,
@@ -157,7 +160,7 @@ export function HomeScreen() {
         </div>
     </React.Fragment>
 
-    if (!hasEntries && isAnimeLibraryItemsOnly(homeItems) && !isLoading) {
+    if (!homeItems.length && !isLoading) {
         return (
             <div data-home-screen="no-entries" className="contents">
                 <React.Fragment>
@@ -271,7 +274,7 @@ export function HomeScreen() {
 
             {/*Continue Watching Header*/}
             {homeItems[0]?.type === "anime-continue-watching-header" && <React.Fragment>
-                <ContinueWatchingHeader episodes={continueWatchingList} />
+                {continueWatchingList.length ? <ContinueWatchingHeader episodes={continueWatchingList} /> : <PageWrapper className="p-4"><h2>Continue Watching</h2><p className="text-[--muted]">No titles currently being watched.</p></PageWrapper>}
             </React.Fragment>}
 
             {/*Library Header*/}
@@ -491,7 +494,7 @@ export function HomeScreenItem(props: HomeScreenItemProps) {
         return (
             <>
                 <h2 data-home-screen-centered-title={item.options?.text} className="text-center text-3xl lg:text-4xl font-bold py-4">
-                    {item.options?.text}
+                    {item.options?.text || "My Media"}
                 </h2>
             </>
         )
@@ -500,6 +503,7 @@ export function HomeScreenItem(props: HomeScreenItemProps) {
     if (item.type === "anime-continue-watching") {
         return (
             <>
+                {!continueWatchingList.length && <PageWrapper className="p-4"><h2>Continue Watching</h2><p className="text-[--muted]">No titles currently being watched.</p></PageWrapper>}
                 <ContinueWatching
                     episodes={continueWatchingList}
                     isLoading={isLoading}
@@ -611,7 +615,8 @@ export function HomeScreenItem(props: HomeScreenItemProps) {
 
     if (item.type === "local-anime-library-stats") {
         return (
-            <PageWrapper>
+            <PageWrapper className="px-4">
+                <h2>Local Media Library Stats</h2>
                 <div
                     className={cn(
                         "grid grid-cols-3 lg:grid-cols-6 gap-4 [&>div]:text-center [&>div>p]:text-[--muted] py-4",
@@ -620,27 +625,27 @@ export function HomeScreenItem(props: HomeScreenItemProps) {
                     data-detailed-library-view-stats-container
                 >
                     {!isNakamaLibrary && <div>
-                        <h3>{data?.stats?.totalSize ?? "-"}</h3>
+                        <h3>{data?.stats?.totalSize ?? "0 B"}</h3>
                         <p>Library</p>
                     </div>}
                     <div>
-                        <h3>{data?.stats?.totalFiles ?? "-"}</h3>
+                        <h3>{data?.stats?.totalFiles ?? 0}</h3>
                         <p>Files</p>
                     </div>
                     <div>
-                        <h3>{data?.stats?.totalEntries ?? "-"}</h3>
+                        <h3>{data?.stats?.totalEntries ?? 0}</h3>
                         <p>Entries</p>
                     </div>
                     <div>
-                        <h3>{data?.stats?.totalShows ?? "-"}</h3>
+                        <h3>{data?.stats?.totalShows ?? 0}</h3>
                         <p>TV Shows</p>
                     </div>
                     <div>
-                        <h3>{data?.stats?.totalMovies ?? "-"}</h3>
+                        <h3>{data?.stats?.totalMovies ?? 0}</h3>
                         <p>Movies</p>
                     </div>
                     <div>
-                        <h3>{data?.stats?.totalSpecials ?? "-"}</h3>
+                        <h3>{data?.stats?.totalSpecials ?? 0}</h3>
                         <p>Specials</p>
                     </div>
                 </div>
@@ -654,21 +659,16 @@ export function HomeScreenItem(props: HomeScreenItemProps) {
 }
 
 function LocalAnimeLibrary(props: { libraryCollectionProps: HandleLibraryCollectionProps, item: Models_HomeItem, index: number }) {
-    return (
-        <>
-            <DetailedLibraryView
-                isHomeItem={true}
-                collectionList={props.libraryCollectionProps.libraryCollectionList.map(list => ({ ...list, entries: list.entries?.filter(entry => !!entry.libraryData) }))}
-                continueWatchingList={props.libraryCollectionProps.continueWatchingList}
-                isLoading={props.libraryCollectionProps.isLoading}
-                hasEntries={props.libraryCollectionProps.hasEntries}
-                streamingMediaIds={props.libraryCollectionProps.streamingMediaIds}
-                isNakamaLibrary={props.libraryCollectionProps.isNakamaLibrary}
-                type={props.item?.options?.layout || "grid"}
-            />
-        </>
-    )
-
+    const entries = props.libraryCollectionProps.libraryCollectionList.flatMap(list => list.entries ?? [])
+        .filter(entry => entry.libraryData && entry.media)
+    const media = [...new Map(entries.map(entry => [entry.media!.id, entry.media!])).values()]
+    const cards = media.map(item => <MediaEntryCard key={item.id} media={item} type="anime" showLibraryBadge containerClassName={props.item.options?.layout === "carousel" ? "basis-[200px] shrink-0 mx-2" : "w-full"} />)
+    return <PageWrapper className="p-4 space-y-4">
+        <h2>Local Media Library</h2>
+        {props.libraryCollectionProps.isLoading ? <p>Loading library...</p> : !media.length ? <p className="text-[--muted]">No local media files found.</p> :
+            props.item.options?.layout === "carousel" ? <Carousel><CarouselDotButtons /><CarouselContent>{cards}</CarouselContent></Carousel> :
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 2xl:grid-cols-7 gap-4">{cards}</div>}
+    </PageWrapper>
 }
 
 function MangaLibrary(props: { libraryCollectionProps: HandleLibraryCollectionProps, item: Models_HomeItem, index: number }) {
@@ -810,9 +810,14 @@ function MyLists(props: { item: Models_HomeItem }) {
         completedList,
         droppedList,
         customLists,
+        isLoading: listsLoading,
     } = useHandleUserMediaLists("", "anime", true)
 
     const isCustomList = !!(item.options?.customListName?.trim?.()?.length)
+    const selectedLists = isCustomList ? customLists.filter(list => list.name === item.options.customListName.trim())
+        : [currentList, repeatingList, planningList, pausedList, completedList, droppedList]
+            .filter(list => list && (!item.options?.statuses?.length || item.options.statuses.includes(list.status)))
+    if (!selectedLists.some(list => list?.entries?.length)) return <PageWrapper className="p-4"><h2>Watchlist</h2><p className="text-[--muted]">{listsLoading ? "Loading watchlist..." : "No titles match the selected lists."}</p></PageWrapper>
 
     return (
         <PageWrapper className="space-y-6 px-4">

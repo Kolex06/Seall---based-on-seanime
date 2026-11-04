@@ -153,6 +153,7 @@ export function HomeSettingsModal({ emptyLibrary, isNakamaLibrary }: { emptyLibr
         updateHomeItems({ items: newItems }, {
             onSuccess: () => {
                 toast.success("Home item added")
+                if (HOME_ITEMS[type].options?.length) setOptionsModalOpen(newItem.id)
             },
         })
     }
@@ -505,6 +506,7 @@ function AvailableHomeItem({ id, type, onAdd, isUpdating }: AvailableHomeItemPro
                 intent="primary-subtle"
                 size="sm"
                 onClick={() => onAdd(type)}
+                aria-label={`Add ${homeItemConfig.name}`}
                 disabled={isUpdating}
                 leftIcon={<BiPlus />}
             >
